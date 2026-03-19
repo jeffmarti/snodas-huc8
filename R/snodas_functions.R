@@ -263,7 +263,7 @@ compute_huc8_swe <- function(swe_raster, huc8, swe_date) {
     cbind(swe_min_mm  = round(swe_min,  2)) %>%
     cbind(swe_max_mm  = round(swe_max,  2)) %>%
     mutate(
-      swe_date       = as.character(swe_date),
+      swe_date = format(as.Date(swe_date), "%Y-%m-%d"),
       swe_mean_in    = round(swe_mean_mm / 25.4, 3),
       swe_volume_af  = round(((swe_mean_mm / 25.4) / 12) * AreaAcres, 0),
       swe_volume_kaf = round(swe_volume_af / 1000, 2)
