@@ -1,7 +1,7 @@
 # ==============================================================================
 # backfill.R
 #
-# Downloads and processes SNODAS SWE for the 1st and 15th of every month
+# Downloads and processes SNODAS SWE for every day
 # from September 2003 to the present day. Designed to run nightly on GitHub
 # Actions, resuming from a checkpoint file each night until complete.
 #
@@ -42,14 +42,7 @@ start_time      <- proc.time()["elapsed"]
 # ------------------------------------------------------------------------------
 
 build_target_dates <- function(start_date, end_date) {
-  months <- seq(
-    as.Date(format(start_date, "%Y-%m-01")),
-    as.Date(format(end_date,   "%Y-%m-01")),
-    by = "month"
-  )
-  dates <- sort(unique(c(months, months + 14)))   # 1st and 15th
-  dates <- dates[dates >= start_date & dates <= end_date]
-  dates
+  seq(start_date, end_date, by = "day")
 }
 
 target_dates <- build_target_dates(backfill_start, backfill_end)
