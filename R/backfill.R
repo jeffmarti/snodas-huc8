@@ -103,8 +103,23 @@ for (d in c(work_dir, cache_dir, data_dir))
 huc8 <- get_huc8_wa(huc8_cache)
 
 # Load existing history or initialise empty data frame
+# Load existing history or initialise empty data frame
 if (file.exists(history_csv)) {
-  history <- read.csv(history_csv, stringsAsFactors = FALSE)
+  history <- read.csv(history_csv, stringsAsFactors = FALSE,
+                      colClasses = c(
+                        HUC8           = "character",
+                        Name           = "character",
+                        States         = "character",
+                        AreaSqKm       = "numeric",
+                        AreaAcres      = "numeric",
+                        swe_date       = "character",
+                        swe_mean_mm    = "numeric",
+                        swe_mean_in    = "numeric",
+                        swe_min_mm     = "numeric",
+                        swe_max_mm     = "numeric",
+                        swe_volume_af  = "numeric",
+                        swe_volume_kaf = "numeric"
+                      ))
   message(sprintf("Loaded existing history: %d rows", nrow(history)))
 } else {
   history <- data.frame()
