@@ -1,1 +1,61 @@
+# ==============================================================================
+# .github/workflows/daily_update.yml
+#
+# Nightly job to append the latest SNODAS date to the history CSV.
+# Enable this workflow once backfill is complete.
+#
+# Runs at 10:30 UTC (2:30am/3:30am PST/PDT) -- SNODAS is typically
+# published by 10:00 UTC for the previous day.
+# ==============================================================================
 
+name: SNODAS Daily Update
+
+on:
+  schedule:
+    - cron: '30 10 * * *'   # 10:30 UTC daily
+  workflow_dispatch:          # allow manual trigger
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.4.0'
+          use-public-rspm: true
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libgdal-dev libgeos-dev libproj-dev libsqlite3-dev libudunits2-dev
+
+      - name: Install R packages
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          packages: |
+            terra
+            sf
+            exactextractr
+            httr
+            dplyr
+            nhdplusTools
+            tigris
+
+      - name: Run daily update
+        run: Rscript R/daily_update.R
+
+      - name: Commit results
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name  "github-actions[bot]"
+          git add data/snodas_huc8_history.csv
+          git diff --staged --quiet || git commit -m "daily update: $(date -u +%Y-%m-%d)"
+          git push

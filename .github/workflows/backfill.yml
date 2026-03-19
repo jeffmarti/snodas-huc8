@@ -1,1 +1,80 @@
+# ==============================================================================
+# .github/workflows/backfill.yml
+#
+# Nightly backfill job -- runs until all 1st/15th dates from 2003 are done.
+# Once backfill_progress.txt contains "COMPLETE", disable this workflow
+# in the GitHub Actions UI (Actions → backfill → ... → Disable workflow).
+#
+# The job commits updated CSV and progress file back to the repo after each run.
+# ==============================================================================
 
+name: SNODAS Backfill
+
+on:
+  schedule:
+    - cron: '0 6 * * *'    # 06:00 UTC = 10pm/11pm PST/PDT -- runs overnight
+  workflow_dispatch:         # allow manual trigger from GitHub Actions UI
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355     # just under GHA 6-hour limit
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.4.0'
+          use-public-rspm: true
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libgdal-dev libgeos-dev libproj-dev libsqlite3-dev libudunits2-dev
+
+      - name: Install R packages
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          packages: |
+            terra
+            sf
+            exactextractr
+            httr
+            dplyr
+            nhdplusTools
+            tigris
+
+      - name: Check backfill status
+        id: check_status
+        run: |
+          if [ -f "data/backfill_progress.txt" ]; then
+            STATUS=$(cat data/backfill_progress.txt)
+            if [ "$STATUS" = "COMPLETE" ]; then
+              echo "complete=true" >> $GITHUB_OUTPUT
+              echo "Backfill already complete -- skipping."
+            else
+              echo "complete=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "complete=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run backfill
+        if: steps.check_status.outputs.complete != 'true'
+        env:
+          MAX_RUNTIME_MIN: 330
+        run: Rscript R/backfill.R
+
+      - name: Commit results
+        if: steps.check_status.outputs.complete != 'true'
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name  "github-actions[bot]"
+          git add data/snodas_huc8_history.csv data/backfill_progress.txt
+          git diff --staged --quiet || git commit -m "backfill: $(cat data/backfill_progress.txt)"
+          git push
