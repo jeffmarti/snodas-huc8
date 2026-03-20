@@ -48,6 +48,7 @@ jobs:
             dplyr
             nhdplusTools
             tigris
+            rsconnect
 
       - name: Run daily update
         run: Rscript R/daily_update.R
