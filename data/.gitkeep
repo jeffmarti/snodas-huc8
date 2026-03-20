@@ -1,0 +1,4 @@
+make_placeholder(
+  file.path(repo_dir, "data", ".gitkeep"),
+  "# Keeps data/ tracked by git. snodas_huc8_history.csv is auto-generated."
+)
