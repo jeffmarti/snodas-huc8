@@ -69,6 +69,9 @@ if (file.exists(history_csv)) {
   history <- data.frame()
 }
 
+history$HUC8 <- as.character(history$HUC8)   # <- ADD
+result$HUC8  <- as.character(result$HUC8)    # <- ADD
+
 history <- dplyr::bind_rows(history, result)
 
 # Keep sorted by date then HUC8
