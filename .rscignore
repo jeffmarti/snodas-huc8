@@ -2,6 +2,7 @@
 .RData
 .github
 R/daily_update.R
-data/.gitkeep
-cache/.gitkeep
+R/snodas_functions.R
+/data/.gitkeep
+/cache/.gitkeep
 README.md
