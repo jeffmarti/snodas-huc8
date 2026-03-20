@@ -1,0 +1,4 @@
+make_placeholder(
+  file.path(repo_dir, "cache", ".gitkeep"),
+  "# Place HUC8_WA_WGS84.gpkg here. Committed once, reused by all scripts."
+)
