@@ -49,6 +49,8 @@ jobs:
             nhdplusTools
             tigris
             rsconnect
+            cpp11
+            progress
 
       - name: Run daily update
         run: Rscript R/daily_update.R
