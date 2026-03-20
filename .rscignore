@@ -1,3 +1,7 @@
+.Rhistory
+.RData
+.github
 R/daily_update.R
-.github/
+data/.gitkeep
+cache/.gitkeep
 README.md
