@@ -60,3 +60,23 @@ jobs:
           git add data/snodas_huc8_history.csv
           git diff --staged --quiet || git commit -m "daily update: $(date -u +%Y-%m-%d)"
           git push
+
+          - name: Deploy to shinyapps.io
+        env:
+          SHINYAPPS_TOKEN:  ${{ secrets.SHINYAPPS_TOKEN }}
+          SHINYAPPS_SECRET: ${{ secrets.SHINYAPPS_SECRET }}
+        run: |
+          Rscript -e "
+            rsconnect::setAccountInfo(
+              name   = 'waterwater',
+              token  = Sys.getenv('SHINYAPPS_TOKEN'),
+              secret = Sys.getenv('SHINYAPPS_SECRET')
+            )
+            rsconnect::deployApp(
+              appDir         = '.',
+              appName        = 'snodas-huc8',
+              account        = 'waterwater',
+              forceUpdate    = TRUE,
+              launch.browser = FALSE
+            )
+          "
