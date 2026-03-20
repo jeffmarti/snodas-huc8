@@ -77,6 +77,7 @@ jobs:
               appName        = 'snodas-huc8',
               account        = 'waterwater',
               forceUpdate    = TRUE,
-              launch.browser = FALSE
+              launch.browser = FALSE,
+              envManagement  = FALSE
             )
           "
