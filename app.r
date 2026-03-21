@@ -26,12 +26,11 @@ library(dplyr)
 # ------------------------------------------------------------------------------
 
 HISTORY_URL <- "https://raw.githubusercontent.com/jeffmarti/snodas-huc8/main/data/snodas_huc8_history.csv"
-HUC8_CACHE  <- "cache/HUC8_WA_WGS84.gpkg"
+HUC8_URL    <- "https://github.com/jeffmarti/snodas-huc8/raw/main/cache/HUC8_WA_WGS84.gpkg"
 
 INIT_LNG  <- -120.5
 INIT_LAT  <-   47.5
 INIT_ZOOM <-    6
-
 # ------------------------------------------------------------------------------
 # LOAD DATA (once at startup)
 # ------------------------------------------------------------------------------
@@ -41,8 +40,11 @@ history          <- read.csv(HISTORY_URL, stringsAsFactors = FALSE)
 history$HUC8     <- as.character(history$HUC8)
 history$swe_date <- as.Date(history$swe_date)
 
+
 message("Loading HUC8 boundaries...")
-huc8 <- sf::st_read(HUC8_CACHE, quiet = TRUE) %>%
+huc8_tmp <- tempfile(fileext = ".gpkg")
+download.file(HUC8_URL, huc8_tmp, mode = "wb", quiet = TRUE)
+huc8 <- sf::st_read(huc8_tmp, quiet = TRUE) %>%
   sf::st_transform(4326)
 
 # Available dates (ascending for calendar)
@@ -148,17 +150,7 @@ ui <- fluidPage(
         border-radius: 4px;
         padding: 10px 20px;
         margin-bottom: 15px;
-        display: flex;
-        gap: 30px;
-        align-items: center;
-        flex-wrap: wrap;
       }
-      .summary-item { text-align: center; }
-      .summary-item .label { font-size: 11px; color: #666;
-                             text-transform: uppercase; letter-spacing: 0.5px; }
-      .summary-item .value { font-size: 20px; font-weight: bold; color: #1a5276; }
-      .summary-item .value.positive { color: #1a5276; }
-      .summary-item .value.negative { color: #922b21; }
       .map-title {
         font-size: 13px; font-weight: bold; color: #444;
         margin-bottom: 4px; padding-left: 4px;
@@ -166,27 +158,27 @@ ui <- fluidPage(
       .leaflet-container { border-radius: 4px; }
     ")),
     tags$script(HTML("
-  $(document).on('shiny:connected', function() {
+      $(document).on('shiny:connected', function() {
 
-    var $dates = $('#current_date, #compare_date');
+        var $dates = $('#current_date, #compare_date');
 
-    $dates.prop('readonly', true)
-          .css('caret-color', 'transparent');
+        $dates.prop('readonly', true)
+              .css('caret-color', 'transparent');
 
-    $(document).on('keydown keypress keyup',
-                   '#current_date, #compare_date',
-                   function(e) {
-                     e.preventDefault();
-                     e.stopPropagation();
-                     return false;
-                   });
+        $(document).on('keydown keypress keyup',
+                       '#current_date, #compare_date',
+                       function(e) {
+                         e.preventDefault();
+                         e.stopPropagation();
+                         return false;
+                       });
 
-    $(document).on('shiny:value', function() {
-      $('#current_date, #compare_date').prop('readonly', true);
-    });
+        $(document).on('shiny:value', function() {
+          $('#current_date, #compare_date').prop('readonly', true);
+        });
 
-  });
-"))
+      });
+    "))
   ),
   
   # Title bar
@@ -195,9 +187,9 @@ ui <- fluidPage(
       tags$p("Daily snow water equivalent by HUC8 watershed \u00b7 NOAA SNODAS \u00b7 Oct 2003\u2013present")
   ),
   
-  # Date controls
+  # Date controls row -- all four controls in one row
   fluidRow(
-    column(4,
+    column(3,
            dateInput("current_date",
                      label         = "Current / Primary Date",
                      value         = max(available_dates),
@@ -206,10 +198,10 @@ ui <- fluidPage(
                      datesdisabled = missing_dates,
                      format        = "MM d, yyyy")
     ),
-    column(4,
+    column(3,
            dateInput("compare_date",
                      label         = "Comparison Date",
-                     value = available_dates[tail(which(
+                     value         = available_dates[tail(which(
                        available_dates <= max(available_dates) - 365
                      ), 1)],
                      min           = min(available_dates),
@@ -217,7 +209,17 @@ ui <- fluidPage(
                      datesdisabled = missing_dates,
                      format        = "MM d, yyyy")
     ),
-    column(4,
+    column(3,
+           selectInput("season_jump",
+                       label    = "Jump to Peak Season Date",
+                       choices  = c("-- select --",
+                                    setNames(
+                                      paste0(2004:as.integer(format(max(available_dates), "%Y")), "-04-01"),
+                                      paste0("April 1, ", 2004:as.integer(format(max(available_dates), "%Y")))
+                                    )),
+                       selected = "-- select --")
+    ),
+    column(3,
            tags$div(style = "margin-top: 25px;",
                     actionButton("swap_dates", "\u21c4 Swap Dates",
                                  class = "btn btn-default btn-sm"),
@@ -292,6 +294,16 @@ server <- function(input, output, session) {
     clicked_source(NULL)
   })
   
+  # -- Season jump selector ----------------------------------------------------
+  observeEvent(input$season_jump, {
+    req(input$season_jump != "-- select --")
+    d <- as.Date(input$season_jump)
+    # Snap to nearest available date in case April 1 is a gap date
+    nearest <- available_dates[which.min(abs(available_dates - d))]
+    updateDateInput(session, "current_date", value = nearest)
+    updateSelectInput(session, "season_jump", selected = "-- select --")
+  })
+  
   # -- Validate date selections ------------------------------------------------
   valid_current <- reactive({
     d <- input$current_date
@@ -349,32 +361,31 @@ server <- function(input, output, session) {
   output$summary_bar <- renderUI({
     cur_total <- sum(current_data()$swe_volume_af, na.rm = TRUE)
     cmp_total <- sum(compare_data()$swe_volume_af, na.rm = TRUE)
-    delta_af  <- cmp_total - cur_total
-    delta_pct <- if (cur_total > 0) (delta_af / cur_total) * 100 else NA
+    delta_af  <- cur_total - cmp_total
+    delta_pct <- if (cmp_total > 0) (delta_af / cmp_total) * 100 else NA
     
-    delta_class <- if (!is.na(delta_af) && delta_af >= 0) "value positive"
-    else "value negative"
-    pct_str <- if (!is.na(delta_pct)) sprintf("%+.1f%%", delta_pct) else "N/A"
+    cur_date_str  <- format(valid_current(), "%B %d, %Y")
+    cmp_date_str  <- format(valid_compare(), "%B %d, %Y")
+    direction     <- if (delta_af >= 0) "greater" else "less"
+    color         <- if (delta_af >= 0) "#1a5276" else "#922b21"
+    abs_delta_str <- formatC(abs(delta_af), format = "f", digits = 0, big.mark = ",")
+    pct_str       <- if (!is.na(delta_pct)) sprintf("%.1f%%", abs(delta_pct)) else "N/A"
+    
+    sentence <- tagList(
+      tags$b(cur_date_str),
+      " SWE was ",
+      tags$b(style = sprintf("color: %s;", color), direction),
+      " than ",
+      tags$b(cmp_date_str),
+      sprintf(" by %s AF (%s)", abs_delta_str, pct_str)
+    )
     
     div(class = "summary-bar",
-        div(class = "summary-item",
-            div(class = "label", format(valid_compare(), "%B %d, %Y")),   # ← was current
-            div(class = "value",
-                formatC(cmp_total, format = "f", digits = 0, big.mark = ","), " AF")
-        ),
-        div(style = "font-size: 24px; color: #aaa;", "\u2192"),
-        div(class = "summary-item",
-            div(class = "label", format(valid_current(), "%B %d, %Y")),   # ← was compare
-            div(class = "value positive",
-                formatC(cur_total, format = "f", digits = 0, big.mark = ","), " AF")
-        ),
-        div(style = "font-size: 24px; color: #aaa;", "="),
-        div(class = "summary-item",
-            div(class = "label", "Change"),
-            div(class = delta_class,
-                formatC(delta_af, format = "f", digits = 0,
-                        big.mark = ",", flag = "+"), " AF (", pct_str, ")")
-        )
+        div(style = "font-size: 15px; color: #333;", sentence),
+        div(style = "font-size: 13px; color: #666; margin-top: 4px;",
+            sprintf("Current: %s AF  \u2022  Comparison: %s AF",
+                    formatC(cur_total, format = "f", digits = 0, big.mark = ","),
+                    formatC(cmp_total, format = "f", digits = 0, big.mark = ",")))
     )
   })
   
@@ -392,21 +403,24 @@ server <- function(input, output, session) {
   # -- Base maps: created ONCE, tiles + initial view only ---------------------
   
   output$current_map <- renderLeaflet({
-    leaflet() %>%
+    leaflet(options = leafletOptions(minZoom = 6, maxZoom = 7)) %>%
       addProviderTiles(providers$Esri.WorldShadedRelief) %>%
-      setView(lng = INIT_LNG, lat = INIT_LAT, zoom = INIT_ZOOM)
+      setView(lng = INIT_LNG, lat = INIT_LAT, zoom = INIT_ZOOM) %>%
+      setMaxBounds(lng1 = -125.5, lat1 = 45.5, lng2 = -116.5, lat2 = 49.5)
   })
   
   output$compare_map <- renderLeaflet({
-    leaflet() %>%
+    leaflet(options = leafletOptions(minZoom = 6, maxZoom = 7)) %>%
       addProviderTiles(providers$Esri.WorldShadedRelief) %>%
-      setView(lng = INIT_LNG, lat = INIT_LAT, zoom = INIT_ZOOM)
+      setView(lng = INIT_LNG, lat = INIT_LAT, zoom = INIT_ZOOM) %>%
+      setMaxBounds(lng1 = -125.5, lat1 = 45.5, lng2 = -116.5, lat2 = 49.5)
   })
   
   output$diff_map <- renderLeaflet({
-    leaflet() %>%
+    leaflet(options = leafletOptions(minZoom = 6, maxZoom = 7)) %>%
       addProviderTiles(providers$Esri.WorldShadedRelief) %>%
-      setView(lng = INIT_LNG, lat = INIT_LAT, zoom = INIT_ZOOM)
+      setView(lng = INIT_LNG, lat = INIT_LAT, zoom = INIT_ZOOM) %>%
+      setMaxBounds(lng1 = -125.5, lat1 = 45.5, lng2 = -116.5, lat2 = 49.5)
   })
   
   # -- Update current map polygons when data changes --------------------------
@@ -421,11 +435,11 @@ server <- function(input, output, session) {
       clearShapes() %>%
       clearControls() %>%
       addPolygons(
-        fillColor   = ~pal(swe_volume_af),
-        fillOpacity = 0.75,
-        color       = "white",
-        weight      = 1,
-        opacity     = 1,
+        fillColor        = ~pal(swe_volume_af),
+        fillOpacity      = 0.75,
+        color            = "white",
+        weight           = 1,
+        opacity          = 1,
         highlightOptions = highlightOptions(
           weight = 2.5, color = "#333", fillOpacity = 0.9, bringToFront = TRUE
         ),
@@ -452,10 +466,10 @@ server <- function(input, output, session) {
       clearShapes() %>%
       clearControls() %>%
       addPolygons(
-        fillColor   = ~pal(swe_volume_af),
-        fillOpacity = 0.75,
-        color       = "white",
-        weight      = 1,
+        fillColor        = ~pal(swe_volume_af),
+        fillOpacity      = 0.75,
+        color            = "white",
+        weight           = 1,
         highlightOptions = highlightOptions(
           weight = 2.5, color = "#333", fillOpacity = 0.9, bringToFront = TRUE
         ),
@@ -492,28 +506,25 @@ server <- function(input, output, session) {
       clearShapes() %>%
       clearControls() %>%
       addPolygons(
-        fillColor   = ~pal(diff_af),
-        fillOpacity = 0.75,
-        color       = "white",
-        weight      = 1,
+        fillColor        = ~pal(diff_af),
+        fillOpacity      = 0.75,
+        color            = "white",
+        weight           = 1,
         highlightOptions = highlightOptions(
           weight = 2.5, color = "#333", fillOpacity = 0.9, bringToFront = TRUE
         ),
         label   = labels,
         layerId = ~HUC8
       ) %>%
-      addLegend(pal      = pal,
-                values   = c(-max_abs, max_abs),
-                title    = "Volume Change (AF)",
-                position = "bottomright",
-                opacity  = 0.85,
+      addLegend(pal       = pal,
+                values    = c(-max_abs, max_abs),
+                title     = "Volume Change (AF)",
+                position  = "bottomright",
+                opacity   = 0.85,
                 labFormat = labelFormat(transform = function(x) round(x, 0)))
   })
   
   # -- Sync clicks across all three maps --------------------------------------
-  # clicked_source tracks which map originated the click so we skip its
-  # proxy popup (it already has the native leaflet popup from the click)
-  
   observeEvent(input$current_map_shape_click, ignoreInit = TRUE, {
     if (.popup_lock) return()
     req(input$current_map_shape_click$id)
@@ -552,19 +563,15 @@ server <- function(input, output, session) {
     cmp_row <- compare_data() %>% filter(HUC8 == huc)
     dif_row <- diff_data()    %>% filter(HUC8 == huc)
     
-
-   
-      leafletProxy("current_map") %>%
+    leafletProxy("current_map") %>%
       clearPopups() %>%
       addPopups(lng = lng, lat = lat, popup = swe_popup(cur_row))
     
-
-      leafletProxy("compare_map") %>%
+    leafletProxy("compare_map") %>%
       clearPopups() %>%
       addPopups(lng = lng, lat = lat, popup = swe_popup(cmp_row))
     
-   
-      leafletProxy("diff_map") %>%
+    leafletProxy("diff_map") %>%
       clearPopups() %>%
       addPopups(lng = lng, lat = lat, popup = diff_popup(dif_row))
     
@@ -573,7 +580,6 @@ server <- function(input, output, session) {
   })
   
   # -- Sync zoom and pan across all three maps --------------------------------
-  
   observe({
     if (.syncing) return()
     z <- input$current_map_zoom
