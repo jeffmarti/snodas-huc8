@@ -12,12 +12,14 @@
 #   - State border added LAST in each proxy block so it renders on top
 #   - clicked_source tracks which map was clicked to avoid duplicate popups
 #   - Plain R variables (.syncing, .popup_lock) prevent circular triggers
+#   - startup_done flag staggers map renders to prevent simultaneous OOM spike
 #
 # Memory optimizations:
 #   - WA state boundary loaded from lightweight repo GeoJSON (no tigris)
 #   - history CSV columns trimmed to only what the app needs at load time
-#   - HUC8 centroids pre-computed once at startup (plain data frame lookup)
+#   - HUC8 centroids loaded from pre-computed static CSV (no geometry ops)
 #   - rm() + gc() called after startup to free transient objects
+#   - Compare and diff maps deferred until after current map renders
 #
 # Data source: https://github.com/jeffmarti/snodas-huc8
 # Deploy to  : waterwater.shinyapps.io
@@ -32,9 +34,9 @@ library(dplyr)
 # CONFIG
 # ------------------------------------------------------------------------------
 
-HISTORY_URL <- "https://raw.githubusercontent.com/jeffmarti/snodas-huc8/main/data/snodas_huc8_history.csv"
-HUC8_URL    <- "https://github.com/jeffmarti/snodas-huc8/raw/main/cache/HUC8_WA_WGS84.gpkg"
-WA_URL      <- "https://github.com/jeffmarti/snodas-huc8/raw/main/cache/WA_State_Boundary.geojson"
+HISTORY_URL   <- "https://raw.githubusercontent.com/jeffmarti/snodas-huc8/main/data/snodas_huc8_history.csv"
+HUC8_URL      <- "https://github.com/jeffmarti/snodas-huc8/raw/main/cache/HUC8_WA_WGS84.gpkg"
+WA_URL        <- "https://github.com/jeffmarti/snodas-huc8/raw/main/cache/WA_State_Boundary.geojson"
 CENTROIDS_URL <- "https://raw.githubusercontent.com/jeffmarti/snodas-huc8/main/cache/huc8_centroids.csv"
 
 INIT_LNG  <- -120.5
@@ -298,6 +300,14 @@ server <- function(input, output, session) {
   .syncing    <- FALSE
   .popup_lock <- FALSE
   
+  # Startup flag -- defers compare and diff map renders until after
+  # the current map has completed its first render, preventing the
+  # three simultaneous polygon renders from spiking memory on load
+  startup_done <- reactiveVal(FALSE)
+  session$onFlushed(function() {
+    startup_done(TRUE)
+  }, once = TRUE)
+  
   # -- Reactive values --------------------------------------------------------
   clicked_huc    <- reactiveVal(NULL)
   clicked_source <- reactiveVal(NULL)
@@ -448,6 +458,7 @@ server <- function(input, output, session) {
   })
   
   # -- Update current map polygons when data changes --------------------------
+  # Fires immediately on startup
   observe({
     d   <- current_data()
     pal <- colorNumeric("YlGnBu", domain = d$swe_volume_af, na.color = "#cccccc")
@@ -483,7 +494,9 @@ server <- function(input, output, session) {
   })
   
   # -- Update comparison map polygons when data changes -----------------------
+  # Deferred until after current map renders (startup_done flag)
   observe({
+    req(startup_done())
     d   <- compare_data()
     pal <- colorNumeric("YlGnBu", domain = d$swe_volume_af, na.color = "#cccccc")
     labels <- sprintf("%s \u2014 %s AF", d$Name,
@@ -517,7 +530,9 @@ server <- function(input, output, session) {
   })
   
   # -- Update difference map polygons when data changes -----------------------
+  # Deferred until after current map renders (startup_done flag)
   observe({
+    req(startup_done())
     d       <- diff_data()
     max_abs <- max(abs(d$diff_af), na.rm = TRUE)
     if (is.infinite(max_abs) || max_abs == 0) max_abs <- 1
