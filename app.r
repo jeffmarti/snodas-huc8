@@ -96,7 +96,7 @@ get_map_data <- function(date_val) {
   swe <- history %>%
     filter(swe_date == as.Date(date_val)) %>%
     select(HUC8, swe_mean_in, swe_mean_mm, swe_volume_af, swe_volume_kaf)
-  
+
   huc8_base %>%
     left_join(swe, by = "HUC8")
 }
@@ -158,7 +158,7 @@ diff_popup <- function(d) {
 # ------------------------------------------------------------------------------
 
 ui <- fluidPage(
-  
+
   tags$head(
     tags$style(HTML("
       body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }
@@ -207,13 +207,13 @@ ui <- fluidPage(
       });
     "))
   ),
-  
+
   # Title bar
   div(class = "title-bar",
       tags$h3("\U0001f3d4\ufe0f Washington State SNODAS SWE Explorer"),
       tags$p("Daily snow water equivalent by HUC8 watershed \u00b7 NOAA SNODAS \u00b7 Oct 2003\u2013present")
   ),
-  
+
   # Date controls row
   fluidRow(
     column(3,
@@ -256,16 +256,16 @@ ui <- fluidPage(
            )
     )
   ),
-  
+
   # Summary bar
   uiOutput("summary_bar"),
-  
+
   # Row 1: Current date map (full width)
   div(class = "map-title", textOutput("current_map_title")),
   leafletOutput("current_map", height = "400px"),
-  
+
   tags$div(style = "height: 15px;"),
-  
+
   # Row 2: Comparison map + Difference map
   fluidRow(
     column(6,
@@ -277,9 +277,9 @@ ui <- fluidPage(
            leafletOutput("diff_map", height = "380px")
     )
   ),
-  
+
   tags$div(style = "height: 20px;"),
-  
+
   # Footer
   tags$p(
     style = "color: #999; font-size: 11px; text-align: center; padding-bottom: 10px;",
@@ -295,11 +295,11 @@ ui <- fluidPage(
 # ------------------------------------------------------------------------------
 
 server <- function(input, output, session) {
-  
+
   # Plain R variables -- outside reactive graph to avoid circular triggers
   .syncing    <- FALSE
   .popup_lock <- FALSE
-  
+
   # Startup flag -- defers compare and diff map renders until after
   # the current map has completed its first render, preventing the
   # three simultaneous polygon renders from spiking memory on load
@@ -307,11 +307,11 @@ server <- function(input, output, session) {
   session$onFlushed(function() {
     startup_done(TRUE)
   }, once = TRUE)
-  
+
   # -- Reactive values --------------------------------------------------------
   clicked_huc    <- reactiveVal(NULL)
   clicked_source <- reactiveVal(NULL)
-  
+
   # -- Swap dates button -------------------------------------------------------
   observeEvent(input$swap_dates, {
     cur <- input$current_date
@@ -319,7 +319,7 @@ server <- function(input, output, session) {
     updateDateInput(session, "current_date", value = cmp)
     updateDateInput(session, "compare_date", value = cur)
   })
-  
+
   # -- Clear popups button -----------------------------------------------------
   observeEvent(input$clear_popups, {
     leafletProxy("current_map") %>% clearPopups()
@@ -328,7 +328,7 @@ server <- function(input, output, session) {
     clicked_huc(NULL)
     clicked_source(NULL)
   })
-  
+
   # -- Season jump selector ----------------------------------------------------
   observeEvent(input$season_jump, {
     req(input$season_jump != "-- select --")
@@ -337,14 +337,14 @@ server <- function(input, output, session) {
     updateDateInput(session, "current_date", value = nearest)
     updateSelectInput(session, "season_jump", selected = "-- select --")
   })
-  
+
   # -- Validate date selections ------------------------------------------------
   valid_current <- reactive({
     d <- input$current_date
     if (is.null(d) || !d %in% available_dates) return(max(available_dates))
     d
   })
-  
+
   valid_compare <- reactive({
     d <- input$compare_date
     if (is.null(d) || !d %in% available_dates)
@@ -352,26 +352,26 @@ server <- function(input, output, session) {
         available_dates <= max(available_dates) - 365)[1]])
     d
   })
-  
+
   # -- Reactive: map data -----------------------------------------------------
   current_data <- reactive({
     req(valid_current())
     get_map_data(valid_current())
   })
-  
+
   compare_data <- reactive({
     req(valid_compare())
     get_map_data(valid_compare())
   })
-  
+
   diff_data <- reactive({
     cur <- current_data()
     cmp <- compare_data()
-    
+
     cur_vals <- cur %>%
       st_drop_geometry() %>%
       select(HUC8, swe_volume_af, swe_volume_kaf, swe_mean_in, swe_mean_mm)
-    
+
     cmp_vals <- cmp %>%
       st_drop_geometry() %>%
       select(HUC8,
@@ -379,7 +379,7 @@ server <- function(input, output, session) {
              cmp_kaf = swe_volume_kaf,
              cmp_in  = swe_mean_in,
              cmp_mm  = swe_mean_mm)
-    
+
     huc8_base %>%
       left_join(cur_vals, by = "HUC8") %>%
       left_join(cmp_vals, by = "HUC8") %>%
@@ -390,21 +390,21 @@ server <- function(input, output, session) {
         diff_mm  = cmp_mm  - swe_mean_mm
       )
   })
-  
+
   # -- Summary bar ------------------------------------------------------------
   output$summary_bar <- renderUI({
     cur_total <- sum(current_data()$swe_volume_af, na.rm = TRUE)
     cmp_total <- sum(compare_data()$swe_volume_af, na.rm = TRUE)
     delta_af  <- cur_total - cmp_total
     delta_pct <- if (cmp_total > 0) (delta_af / cmp_total) * 100 else NA
-    
+
     cur_date_str  <- format(valid_current(), "%B %d, %Y")
     cmp_date_str  <- format(valid_compare(), "%B %d, %Y")
     direction     <- if (delta_af >= 0) "greater" else "less"
     color         <- if (delta_af >= 0) "#1a5276" else "#922b21"
     abs_delta_str <- formatC(abs(delta_af), format = "f", digits = 0, big.mark = ",")
     pct_str       <- if (!is.na(delta_pct)) sprintf("%.1f%%", abs(delta_pct)) else "N/A"
-    
+
     sentence <- tagList(
       tags$b(cur_date_str),
       " SWE was ",
@@ -413,7 +413,7 @@ server <- function(input, output, session) {
       tags$b(cmp_date_str),
       sprintf(" by %s AF (%s)", abs_delta_str, pct_str)
     )
-    
+
     div(class = "summary-bar",
         div(style = "font-size: 15px; color: #333;", sentence),
         div(style = "font-size: 13px; color: #666; margin-top: 4px;",
@@ -422,7 +422,7 @@ server <- function(input, output, session) {
                     formatC(cmp_total, format = "f", digits = 0, big.mark = ",")))
     )
   })
-  
+
   # -- Map titles -------------------------------------------------------------
   output$current_map_title <- renderText({
     paste("Current:", format(valid_current(), "%B %d, %Y"))
@@ -433,30 +433,30 @@ server <- function(input, output, session) {
   output$diff_map_title <- renderText({
     "Difference (Comparison minus Current)"
   })
-  
+
   # -- Base maps: created ONCE, tiles + initial view only ---------------------
-  
+
   output$current_map <- renderLeaflet({
     leaflet(options = leafletOptions(minZoom = 6, maxZoom = 7)) %>%
       addProviderTiles(providers$Esri.WorldShadedRelief) %>%
       setView(lng = INIT_LNG, lat = INIT_LAT, zoom = INIT_ZOOM) %>%
       setMaxBounds(lng1 = -125.5, lat1 = 45.5, lng2 = -116.5, lat2 = 49.5)
   })
-  
+
   output$compare_map <- renderLeaflet({
     leaflet(options = leafletOptions(minZoom = 6, maxZoom = 6)) %>%
       addProviderTiles(providers$Esri.WorldShadedRelief) %>%
       setView(lng = INIT_LNG, lat = INIT_LAT, zoom = INIT_ZOOM) %>%
       setMaxBounds(lng1 = -125.5, lat1 = 45.5, lng2 = -116.5, lat2 = 49.5)
   })
-  
+
   output$diff_map <- renderLeaflet({
     leaflet(options = leafletOptions(minZoom = 6, maxZoom = 6)) %>%
       addProviderTiles(providers$Esri.WorldShadedRelief) %>%
       setView(lng = INIT_LNG, lat = INIT_LAT, zoom = INIT_ZOOM) %>%
       setMaxBounds(lng1 = -125.5, lat1 = 45.5, lng2 = -116.5, lat2 = 49.5)
   })
-  
+
   # -- Update current map polygons when data changes --------------------------
   # Fires immediately on startup
   observe({
@@ -465,7 +465,7 @@ server <- function(input, output, session) {
     labels <- sprintf("%s \u2014 %s AF", d$Name,
                       formatC(ifelse(is.na(d$swe_volume_af), 0, d$swe_volume_af),
                               format = "f", digits = 0, big.mark = ","))
-    
+
     leafletProxy("current_map", data = d) %>%
       clearShapes() %>%
       clearControls() %>%
@@ -492,7 +492,7 @@ server <- function(input, output, session) {
                    weight  = 1.5,
                    opacity = 0.8)
   })
-  
+
   # -- Update comparison map polygons when data changes -----------------------
   # Deferred until after current map renders (startup_done flag)
   observe({
@@ -502,7 +502,7 @@ server <- function(input, output, session) {
     labels <- sprintf("%s \u2014 %s AF", d$Name,
                       formatC(ifelse(is.na(d$swe_volume_af), 0, d$swe_volume_af),
                               format = "f", digits = 0, big.mark = ","))
-    
+
     leafletProxy("compare_map", data = d) %>%
       clearShapes() %>%
       clearControls() %>%
@@ -528,7 +528,7 @@ server <- function(input, output, session) {
                    weight  = 1.5,
                    opacity = 0.8)
   })
-  
+
   # -- Update difference map polygons when data changes -----------------------
   # Deferred until after current map renders (startup_done flag)
   observe({
@@ -536,19 +536,19 @@ server <- function(input, output, session) {
     d       <- diff_data()
     max_abs <- max(abs(d$diff_af), na.rm = TRUE)
     if (is.infinite(max_abs) || max_abs == 0) max_abs <- 1
-    
+
     pal <- colorNumeric(
       palette  = c("#922b21", "#e74c3c", "#fadbd8", "#ffffff",
                    "#d6eaf8", "#2e86c1", "#1a5276"),
       domain   = c(-max_abs, max_abs),
       na.color = "#cccccc"
     )
-    
+
     labels <- sprintf("%s \u2014 %s AF", d$Name,
                       formatC(ifelse(is.na(d$diff_af), 0, d$diff_af),
                               format = "f", digits = 0, big.mark = ",",
                               flag = "+"))
-    
+
     leafletProxy("diff_map", data = d) %>%
       clearShapes() %>%
       clearControls() %>%
@@ -574,7 +574,7 @@ server <- function(input, output, session) {
                    weight  = 1.5,
                    opacity = 0.8)
   })
-  
+
   # -- Sync clicks across all three maps --------------------------------------
   observeEvent(input$current_map_shape_click, ignoreInit = TRUE, {
     if (.popup_lock) return()
@@ -582,51 +582,51 @@ server <- function(input, output, session) {
     clicked_source("current_map")
     clicked_huc(input$current_map_shape_click$id)
   })
-  
+
   observeEvent(input$compare_map_shape_click, ignoreInit = TRUE, {
     if (.popup_lock) return()
     req(input$compare_map_shape_click$id)
     clicked_source("compare_map")
     clicked_huc(input$compare_map_shape_click$id)
   })
-  
+
   observeEvent(input$diff_map_shape_click, ignoreInit = TRUE, {
     if (.popup_lock) return()
     req(input$diff_map_shape_click$id)
     clicked_source("diff_map")
     clicked_huc(input$diff_map_shape_click$id)
   })
-  
+
   observeEvent(clicked_huc(), ignoreNULL = TRUE, {
     huc         <- clicked_huc()
     source_map  <- clicked_source()
     .popup_lock <<- TRUE
-    
+
     # Look up pre-computed centroid -- no geometry operation at runtime
     centroid <- huc8_centroids[huc8_centroids$HUC8 == huc, ]
     lng <- centroid$X
     lat <- centroid$Y
-    
+
     cur_row <- current_data() %>% filter(HUC8 == huc)
     cmp_row <- compare_data() %>% filter(HUC8 == huc)
     dif_row <- diff_data()    %>% filter(HUC8 == huc)
-    
+
     leafletProxy("current_map") %>%
       clearPopups() %>%
       addPopups(lng = lng, lat = lat, popup = swe_popup(cur_row))
-    
+
     leafletProxy("compare_map") %>%
       clearPopups() %>%
       addPopups(lng = lng, lat = lat, popup = swe_popup(cmp_row))
-    
+
     leafletProxy("diff_map") %>%
       clearPopups() %>%
       addPopups(lng = lng, lat = lat, popup = diff_popup(dif_row))
-    
+
     clicked_huc(NULL)
     .popup_lock <<- FALSE
   })
-  
+
   # -- Sync zoom and pan across all three maps --------------------------------
   observe({
     if (.syncing) return()
@@ -638,7 +638,7 @@ server <- function(input, output, session) {
     leafletProxy("diff_map")    %>% setView(c$lng, c$lat, z)
     .syncing <<- FALSE
   })
-  
+
   observe({
     if (.syncing) return()
     z <- input$compare_map_zoom
@@ -649,7 +649,7 @@ server <- function(input, output, session) {
     leafletProxy("diff_map")    %>% setView(c$lng, c$lat, z)
     .syncing <<- FALSE
   })
-  
+
   observe({
     if (.syncing) return()
     z <- input$diff_map_zoom
@@ -660,7 +660,7 @@ server <- function(input, output, session) {
     leafletProxy("compare_map") %>% setView(c$lng, c$lat, z)
     .syncing <<- FALSE
   })
-  
+
 }
 
 # ------------------------------------------------------------------------------
