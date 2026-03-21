@@ -53,7 +53,7 @@ jobs:
             progress
 
       - name: Run daily update
-        run: Rscript R/daily_update.R
+        run: Rscript scripts/daily_update.R
 
       - name: Commit results
         run: |
