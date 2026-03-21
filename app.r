@@ -26,7 +26,7 @@ library(dplyr)
 # ------------------------------------------------------------------------------
 
 HISTORY_URL <- "https://raw.githubusercontent.com/jeffmarti/snodas-huc8/main/data/snodas_huc8_history.csv"
-HUC8_CACHE  <- "../cache/HUC8_WA_WGS84.gpkg"
+HUC8_CACHE  <- "cache/HUC8_WA_WGS84.gpkg"
 
 INIT_LNG  <- -120.5
 INIT_LAT  <-   47.5
