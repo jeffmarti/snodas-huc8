@@ -51,6 +51,7 @@ jobs:
             rsconnect
             cpp11
             progress
+            DT
 
       - name: Run daily update
         run: Rscript scripts/daily_update.R
