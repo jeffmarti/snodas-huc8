@@ -1,8 +1,8 @@
 .Rhistory
 .RData
 .github
-R/daily_update.R
-R/snodas_functions.R
+scripts/daily_update.R
+scripts/snodas_functions.R
 /data/.gitkeep
 /cache/.gitkeep
 README.md
