@@ -68,7 +68,7 @@ jobs:
         if: steps.check_status.outputs.complete != 'true'
         env:
           MAX_RUNTIME_MIN: 330
-        run: Rscript R/backfill.R
+        run: Rscript scripts/backfill.R
 
       - name: Commit results
         if: steps.check_status.outputs.complete != 'true'
