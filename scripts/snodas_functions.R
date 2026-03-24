@@ -256,7 +256,7 @@ compute_huc8_swe <- function(swe_raster, huc8, swe_date) {
   swe_min  <- exact_extract(swe_crop, huc8, "min",  progress = FALSE)
   swe_max  <- exact_extract(swe_crop, huc8, "max",  progress = FALSE)
 
- result <- huc8 %>%
+result <- huc8 %>%
     st_drop_geometry() %>%
     rename(
       HUC8     = huc8,
