@@ -16,7 +16,7 @@
 #                      (default: 330, leaving 30 min buffer before 6hr limit)
 # ==============================================================================
 
-source("R/snodas_functions.R")
+source("scripts/snodas_functions.R")
 
 # ------------------------------------------------------------------------------
 # CONFIG
