@@ -262,9 +262,10 @@ compute_huc8_swe <- function(swe_raster, huc8, swe_date) {
       HUC8     = huc8,
       Name     = name,
       States   = states,
-      AreaSqKm = areasqkm,
-      AreaAcres = areaacres
+      AreaSqKm = area_km2_clipped
     ) %>%
+    mutate(AreaAcres = AreaSqKm * 247.105) %>%
+    select(HUC8, Name, States, AreaSqKm, AreaAcres) %>%
     select(HUC8, Name, States, AreaSqKm, AreaAcres) %>%
     cbind(swe_mean_mm = round(swe_mean, 2)) %>%
     cbind(swe_min_mm  = round(swe_min,  2)) %>%
