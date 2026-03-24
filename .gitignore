@@ -1,0 +1,15 @@
+# R project files
+.Rproj.user/
+*.Rproj
+
+# R history
+.Rhistory
+.RData
+
+# Local archive CSVs
+data/old_snodas_huc8_history.csv
+data/snodas_huc8_history_OLD_unclipped.csv
+data/snodas_huc8_history_OLD_wrong_acres.csv
+
+# Temp processing folder
+tmp_snodas/
