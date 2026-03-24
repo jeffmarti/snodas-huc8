@@ -97,7 +97,7 @@ huc8 <- get_huc8_wa(huc8_cache)
 
 # Load existing history or initialise empty data frame
 # Load existing history or initialise empty data frame
-if (file.exists(history_csv)) {
+if (file.exists(history_csv)&& file.size(history_csv) > 0) {
   history <- read.csv(history_csv, stringsAsFactors = FALSE,
                       colClasses = c(
                         HUC8           = "character",
