@@ -75,9 +75,19 @@ full_range    <- seq(min(available_dates), max(available_dates), by = "day")
 missing_dates <- as.character(full_range[!full_range %in% available_dates])
 
 # Pre-join spatial + attribute data for fast filtering at runtime
+# Pre-join spatial + attribute data for fast filtering at runtime
 huc8_base <- huc8 %>%
-  select(HUC8, Name, AreaSqKm, AreaAcres) %>%
-  mutate(HUC8 = as.character(HUC8))
+  rename(
+    HUC8     = huc8,
+    Name     = name,
+    States   = states,
+    AreaSqKm = area_km2_clipped
+  ) %>%
+  mutate(
+    HUC8      = as.character(HUC8),
+    AreaAcres = AreaSqKm * 247.105
+  ) %>%
+  select(HUC8, Name, States, AreaSqKm, AreaAcres)
 
 # Load pre-computed centroids for popups (no geometry operation at runtime)
 huc8_centroids <- read.csv(CENTROIDS_URL, stringsAsFactors = FALSE)
