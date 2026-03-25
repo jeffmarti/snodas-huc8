@@ -77,5 +77,4 @@ jobs:
           git config --local user.name  "github-actions[bot]"
           git add data/snodas_huc8_history.csv data/backfill_progress.txt
           git diff --staged --quiet || git commit -m "backfill: $(cat data/backfill_progress.txt)"
-          git pull --rebase origin main
-          git push
+          git push --force-with-lease
