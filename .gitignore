@@ -13,3 +13,6 @@ data/snodas_huc8_history_OLD_wrong_acres.csv
 
 # Temp processing folder
 tmp_snodas/
+
+#nonapp_scripts
+nonapp_scripts/
