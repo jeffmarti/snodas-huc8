@@ -84,7 +84,7 @@ jobs:
               appDir         = '.',
               appName        = 'snodas-huc8',
               appFiles       = c(
-                'app.R',
+                'app.r',
                 'cache/huc8_centroids.csv',
                 'cache/HUC8_WA_WGS84.gpkg',
                 'cache/WA_State_Boundary.geojson',
