@@ -6,20 +6,21 @@
 #
 # Runs at 10:30 UTC (2:30am/3:30am PST/PDT) -- SNODAS is typically
 # published by 10:00 UTC for the previous day.
+#
+# CHANGES:
+#   - Added plotly, shiny, leaflet, readr to R packages (required by app.R)
+#   - Added appFiles parameter to deployApp() to bundle only files the
+#     app actually needs, excluding pipeline scripts and archived CSVs
 # ==============================================================================
-
 name: SNODAS Daily Update
-
 on:
   schedule:
     - cron: '30 10 * * *'   # 10:30 UTC daily
   workflow_dispatch:          # allow manual trigger
-
 jobs:
   update:
     runs-on: ubuntu-latest
     timeout-minutes: 60
-
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -52,6 +53,10 @@ jobs:
             cpp11
             progress
             DT
+            plotly
+            shiny
+            leaflet
+            readr
 
       - name: Run daily update
         run: Rscript scripts/daily_update.R
@@ -78,6 +83,13 @@ jobs:
             rsconnect::deployApp(
               appDir         = '.',
               appName        = 'snodas-huc8',
+              appFiles       = c(
+                'app.R',
+                'cache/huc8_centroids.csv',
+                'cache/HUC8_WA_WGS84.gpkg',
+                'cache/WA_State_Boundary.geojson',
+                'data/snodas_huc8_history.csv'
+              ),
               account        = 'waterwater',
               forceUpdate    = TRUE,
               launch.browser = FALSE,
