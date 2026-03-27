@@ -2,7 +2,8 @@
 # app.R
 # SNODAS HUC8 SWE Comparison Shiny App
 #
-# Tab 2: Climatology -- SWE percentile ribbon chart with current WY highlighted
+# Tab 1: Date Explorer -- leaflet map with SWE choropleth
+# Tab 2: Climatology  -- SWE percentile ribbon chart with hover box + CSV download
 #
 # Data source: https://github.com/jeffmarti/snodas-huc8
 # Deploy to  : waterwater.shinyapps.io
@@ -245,6 +246,21 @@ ui <- fluidPage(
                    margin-bottom: 4px; padding-left: 4px; }
       .leaflet-container { border-radius: 4px; }
       .nav-tabs { margin-bottom: 15px; }
+      .clim-hover-box {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background: rgba(255,255,255,0.92);
+        border: 1px solid #ccc;
+        border-radius: 6px;
+        padding: 8px 12px;
+        font-size: 12px;
+        line-height: 1.7;
+        pointer-events: none;
+        z-index: 9999;
+        min-width: 180px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+      }
     ")),
     tags$script(HTML("
       $(document).on('shiny:connected', function() {
@@ -317,7 +333,7 @@ ui <- fluidPage(
              tags$p(style = "color: #999; font-size: 11px; text-align: center; padding-bottom: 10px;",
                     "Data: NOAA NSIDC SNODAS G02158 \u00b7 HUC8: USGS WBD \u00b7 ",
                     tags$a(href = "https://github.com/jeffmarti/snodas-huc8", target = "_blank", "GitHub"))
-    ),
+    ),  # end TAB 1
     
     # ==========================================================================
     # TAB 2: Climatology
@@ -335,15 +351,22 @@ ui <- fluidPage(
                column(4, tags$div(style = "margin-top: 25px;", uiOutput("pct_normal_badge")))
              ),
              
-             plotlyOutput("clim_plot", height = "520px"),
+             tags$div(
+               style = "position: relative;",
+               plotlyOutput("clim_plot", height = "520px"),
+               uiOutput("clim_hover_box")
+             ),
+             
              tags$div(style = "height: 10px;"),
+             downloadButton("clim_download_csv", "Download Climatology Data (CSV)"),
              tags$p(style = "color: #999; font-size: 11px; text-align: center; padding-bottom: 10px;",
                     "Climatology: SNODAS Oct 2003\u2013present \u00b7 ",
                     "Ribbons: min/max, 10th\u201390th, 25th\u201375th percentile by day of water year")
-    )
+             
+    )   # end TAB 2
     
-  )
-)
+  )  # end tabsetPanel
+)  # end fluidPage
 
 # ------------------------------------------------------------------------------
 # SERVER
@@ -574,6 +597,62 @@ server <- function(input, output, session) {
     )
   })
   
+  # Hover box — driven by customdata (wy_doy) to avoid fragile date parsing
+  output$clim_hover_box <- renderUI({
+    hover <- plotly::event_data("plotly_hover", source = "clim_plot", session = session)
+    if (is.null(hover) || is.null(hover$customdata)) return(NULL)
+    
+    cd         <- clim_data()
+    units      <- input$clim_units
+    unit_lbl   <- if (units == "kaf") "KAF" else "AF"
+    fmt_digits <- if (units == "kaf") 1 else 0
+    
+    rb <- cd$ribbons
+    cy <- cd$current
+    
+    if (units == "kaf") {
+      rb <- rb %>% mutate(across(c(p00,p10,p25,p50,p75,p90,p100), ~ ./1000))
+      cy <- cy %>% mutate(swe_volume_af = swe_volume_af / 1000)
+    }
+    
+    doy <- as.integer(hover$customdata[1])
+    
+    match_row <- rb %>% filter(wy_doy == doy)
+    if (nrow(match_row) == 0) return(NULL)
+    
+    cy_row <- cy %>% filter(wy_doy == doy)
+    cy_val <- if (nrow(cy_row) > 0) {
+      formatC(cy_row$swe_volume_af[1], format="f", digits=fmt_digits, big.mark=",")
+    } else "\u2014"
+    
+    fmt <- function(x) formatC(x, format="f", digits=fmt_digits, big.mark=",")
+    
+    hov_date <- as.Date("1999-10-01") + doy - 1
+    date_lbl <- format(hov_date, "%b %d")
+    
+    tags$div(
+      class = "clim-hover-box",
+      # Date header
+      tags$div(style = "font-weight:bold; margin-bottom:4px;
+                        color:#333; border-bottom:1px solid #ddd;
+                        padding-bottom:3px;",
+               date_lbl),
+      # Current WY
+      tags$div(style = "color:#e74c3c; margin-bottom:4px;",
+               paste0("WY ", cd$display_wy, ": ", cy_val, " ", unit_lbl)),
+      # Divider
+      tags$div(style = "border-top:1px solid #eee; margin-bottom:4px;"),
+      # Percentiles
+      tags$div(style = "color:#555;",
+               tags$div(paste0("90th:   ", fmt(match_row$p90[1]), " ", unit_lbl)),
+               tags$div(paste0("75th:   ", fmt(match_row$p75[1]), " ", unit_lbl)),
+               tags$div(paste0("Median: ", fmt(match_row$p50[1]), " ", unit_lbl)),
+               tags$div(paste0("25th:   ", fmt(match_row$p25[1]), " ", unit_lbl)),
+               tags$div(paste0("10th:   ", fmt(match_row$p10[1]), " ", unit_lbl))
+      )
+    )
+  })
+  
   output$clim_plot <- renderPlotly({
     cd       <- clim_data()
     units    <- input$clim_units
@@ -600,71 +679,63 @@ server <- function(input, output, session) {
     month_ticks  <- seq(as.Date("1999-10-01"), as.Date("2000-09-30"), by = "month")
     month_labels <- format(month_ticks, "%b")
     
-    # Dark hover label style
-    hl <- list(bgcolor = "rgba(30,30,30,0.88)", opacity = 0.95,
-               font    = list(color = "blue", size = 12),
-               bordercolor = "transparent")
-    
-    # Pre-compute current WY hover (vectorized, avoids formula scoping issues)
-    cy_hover <- paste0(
-      format(cy$swe_date, "%b %d, %Y"), "<br>",
-      ifelse(units == "kaf", "KAF", "AF"), ": ",
-      formatC(cy$swe_volume_af, format="f", digits=fmt_digits, big.mark=","),
-      "<extra></extra>"
-    )
-    
-    plot_ly() %>%
+    p <- plot_ly(source = "clim_plot") %>%
       
+      # Ribbons — customdata carries wy_doy for hover lookup
       add_ribbons(data=rb, x=~x_date, ymin=~p00, ymax=~p100,
+                  customdata=~wy_doy,
                   fillcolor="rgba(180,180,180,0.25)", line=list(color="transparent"),
-                  name="Min/Max Range", hovertemplate="", hoverlabel=hl,
+                  name="Min/Max Range", hoverinfo="none",
                   showlegend=TRUE) %>%
       
       add_ribbons(data=rb, x=~x_date, ymin=~p10, ymax=~p90,
+                  customdata=~wy_doy,
                   fillcolor="rgba(130,130,130,0.30)", line=list(color="transparent"),
-                  name="10th\u201390th Percentile", hovertemplate="", hoverlabel=hl,
+                  name="10th\u201390th Percentile", hoverinfo="none",
                   showlegend=TRUE) %>%
       
       add_ribbons(data=rb, x=~x_date, ymin=~p25, ymax=~p75,
+                  customdata=~wy_doy,
                   fillcolor="rgba(80,80,80,0.35)", line=list(color="transparent"),
-                  name="25th\u201375th Percentile", hovertemplate="", hoverlabel=hl,
+                  name="25th\u201375th Percentile", hoverinfo="none",
                   showlegend=TRUE) %>%
       
+      # Percentile lines — customdata carries wy_doy, no visible tooltip
       add_lines(data=rb, x=~x_date, y=~p90,
+                customdata=~wy_doy,
                 line=list(color="transparent",width=0), name="90th Pct",
-                showlegend=FALSE, hoverlabel=hl,
-                hovertemplate=~sprintf("90th: %s<extra></extra>",
-                                       formatC(p90,format="f",digits=fmt_digits,big.mark=","))) %>%
+                showlegend=FALSE, hoverinfo="none") %>%
       
       add_lines(data=rb, x=~x_date, y=~p75,
+                customdata=~wy_doy,
                 line=list(color="transparent",width=0), name="75th Pct",
-                showlegend=FALSE, hoverlabel=hl,
-                hovertemplate=~sprintf("75th: %s<extra></extra>",
-                                       formatC(p75,format="f",digits=fmt_digits,big.mark=","))) %>%
+                showlegend=FALSE, hoverinfo="none") %>%
       
       add_lines(data=rb, x=~x_date, y=~p50,
+                customdata=~wy_doy,
                 line=list(color="rgba(60,60,60,0.85)",width=2,dash="dot"),
-                name="Median", showlegend=TRUE, hoverlabel=hl,
-                hovertemplate=~sprintf("Median: %s<extra></extra>",
-                                       formatC(p50,format="f",digits=fmt_digits,big.mark=","))) %>%
+                name="Median", showlegend=TRUE, hoverinfo="none") %>%
       
       add_lines(data=rb, x=~x_date, y=~p25,
+                customdata=~wy_doy,
                 line=list(color="transparent",width=0), name="25th Pct",
-                showlegend=FALSE, hoverlabel=hl,
-                hovertemplate=~sprintf("25th: %s<extra></extra>",
-                                       formatC(p25,format="f",digits=fmt_digits,big.mark=","))) %>%
+                showlegend=FALSE, hoverinfo="none") %>%
       
       add_lines(data=rb, x=~x_date, y=~p10,
+                customdata=~wy_doy,
                 line=list(color="transparent",width=0), name="10th Pct",
-                showlegend=FALSE, hoverlabel=hl,
-                hovertemplate=~sprintf("10th: %s<extra></extra>",
-                                       formatC(p10,format="f",digits=fmt_digits,big.mark=","))) %>%
+                showlegend=FALSE, hoverinfo="none") %>%
       
+      # Current WY line — customdata carries wy_doy
       add_lines(data=cy, x=~x_date, y=~swe_volume_af,
+                customdata=~wy_doy,
                 line=list(color="#e74c3c", width=4),
                 name=paste0("WY ", disp_wy, " (", wy_label, ")"),
-                showlegend=TRUE, hoverlabel=hl,
-                hovertemplate=cy_hover) %>%
+                showlegend=TRUE, hoverinfo="none") %>%
+      
+      # Register hover and unhover events so Shiny receives them reliably
+      event_register("plotly_hover") %>%
+      event_register("plotly_unhover") %>%
       
       layout(
         title = list(
@@ -692,9 +763,55 @@ server <- function(input, output, session) {
         paper_bgcolor = "white",
         margin        = list(t=60, b=80)
       )
+    
+    p
   })
   
-}
+  output$clim_download_csv <- downloadHandler(
+    filename = function() {
+      huc_name <- basin_lookup$Name[basin_lookup$HUC8 == input$clim_huc][1]
+      paste0("SNODAS_Climatology_", gsub(" ", "_", huc_name), ".csv")
+    },
+    content = function(file) {
+      cd         <- clim_data()
+      units      <- input$clim_units
+      unit_lbl   <- if (units == "kaf") "KAF" else "AF"
+      
+      rb <- cd$ribbons
+      cy <- cd$current
+      
+      if (units == "kaf") {
+        rb <- rb %>% mutate(across(c(p00,p10,p25,p50,p75,p90,p100), ~ ./1000))
+        cy <- cy %>% mutate(swe_volume_af = swe_volume_af / 1000)
+      }
+      
+      wy_start  <- as.Date("1999-10-01")
+      rb$x_date <- wy_start + rb$wy_doy - 1
+      
+      cy_lookup <- cy %>%
+        mutate(x_date = wy_start + wy_doy - 1) %>%
+        select(x_date, current_wy_val = swe_volume_af)
+      
+      out <- rb %>%
+        left_join(cy_lookup, by = "x_date") %>%
+        mutate(date = format(x_date, "%b %d")) %>%
+        select(date, current_wy_val, p10, p25, p50, p75, p90)
+      
+      names(out) <- c(
+        "Date",
+        paste0("WY_", cd$display_wy, "_", unit_lbl),
+        paste0("10th_", unit_lbl),
+        paste0("25th_", unit_lbl),
+        paste0("Median_", unit_lbl),
+        paste0("75th_", unit_lbl),
+        paste0("90th_", unit_lbl)
+      )
+      
+      write.csv(out, file, row.names = FALSE)
+    }
+  )
+  
+}  # end server
 
 # ------------------------------------------------------------------------------
 shinyApp(ui, server)
