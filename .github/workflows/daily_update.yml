@@ -2,15 +2,14 @@
 # .github/workflows/daily_update.yml
 #
 # Nightly job to append the latest SNODAS date to the history CSV.
-# Enable this workflow once backfill is complete.
 #
 # Runs at 10:30 UTC (2:30am/3:30am PST/PDT) -- SNODAS is typically
 # published by 10:00 UTC for the previous day.
 #
 # CHANGES:
-#   - Added plotly, shiny, leaflet, readr to R packages (required by app.R)
-#   - Added appFiles parameter to deployApp() to bundle only files the
-#     app actually needs, excluding pipeline scripts and archived CSVs
+#   - Added plotly, shiny, leaflet, readr to R packages
+#   - appFiles updated to include huc8_base.rds and wa_border.rds
+#     and exclude pipeline scripts and archived CSVs
 # ==============================================================================
 name: SNODAS Daily Update
 on:
@@ -86,8 +85,8 @@ jobs:
               appFiles       = c(
                 'app.r',
                 'cache/huc8_centroids.csv',
-                'cache/HUC8_WA_WGS84.gpkg',
-                'cache/WA_State_Boundary.geojson',
+                'cache/huc8_base.rds',
+                'cache/wa_border.rds',
                 'data/snodas_huc8_history.csv'
               ),
               account        = 'waterwater',

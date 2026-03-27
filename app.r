@@ -7,6 +7,12 @@
 #
 # Data source: https://github.com/jeffmarti/snodas-huc8
 # Deploy to  : waterwater.shinyapps.io
+#
+# CHANGES:
+#   - HUC8 boundaries and WA border now loaded from pre-processed .rds files
+#     (huc8_base.rds, wa_border.rds) instead of raw .gpkg/.geojson files.
+#     This skips st_read() + st_transform() at startup, reducing memory usage.
+#     huc8_base.rds is simplified at dTolerance=1.0 (~9.5MB vs original 26MB).
 # ==============================================================================
 
 library(shiny)
@@ -21,8 +27,6 @@ library(plotly)
 # ------------------------------------------------------------------------------
 
 HISTORY_URL   <- "https://raw.githubusercontent.com/jeffmarti/snodas-huc8/main/data/snodas_huc8_history.csv"
-HUC8_URL      <- "https://github.com/jeffmarti/snodas-huc8/raw/main/cache/HUC8_WA_WGS84.gpkg"
-WA_URL        <- "https://github.com/jeffmarti/snodas-huc8/raw/main/cache/WA_State_Boundary.geojson"
 CENTROIDS_URL <- "https://raw.githubusercontent.com/jeffmarti/snodas-huc8/main/cache/huc8_centroids.csv"
 
 INIT_LNG  <- -120.5
@@ -46,19 +50,16 @@ history <- read.csv(HISTORY_URL, stringsAsFactors = FALSE) %>%
 history$HUC8     <- as.character(history$HUC8)
 history$swe_date <- as.Date(history$swe_date)
 
-message("Loading HUC8 boundaries...")
-huc8_tmp <- tempfile(fileext = ".gpkg")
-download.file(HUC8_URL, huc8_tmp, mode = "wb", quiet = TRUE)
-huc8 <- sf::st_read(huc8_tmp, quiet = TRUE) %>%
-  sf::st_transform(4326)
-unlink(huc8_tmp)
+message("Loading HUC8 boundaries (pre-processed rds)...")
+huc8_base <- readRDS("cache/huc8_base.rds")   # simplified + transformed, ready to use
 
-message("Loading WA state boundary...")
-wa_tmp <- tempfile(fileext = ".geojson")
-download.file(WA_URL, wa_tmp, mode = "wb", quiet = TRUE)
-wa_border <- sf::st_read(wa_tmp, quiet = TRUE) %>%
-  sf::st_transform(4326)
-unlink(wa_tmp)
+message("Loading WA state boundary (pre-processed rds)...")
+wa_border <- readRDS("cache/wa_border.rds")   # transformed, ready to use
+
+# Load pre-computed centroids for popups
+huc8_centroids <- read.csv(CENTROIDS_URL, stringsAsFactors = FALSE)
+
+gc()
 
 # Available dates (ascending for calendar)
 available_dates <- sort(unique(history$swe_date), decreasing = FALSE)
@@ -67,25 +68,7 @@ available_dates <- sort(unique(history$swe_date), decreasing = FALSE)
 full_range    <- seq(min(available_dates), max(available_dates), by = "day")
 missing_dates <- as.character(full_range[!full_range %in% available_dates])
 
-# Pre-join spatial + attribute data for fast filtering at runtime
-huc8_base <- huc8 %>%
-  rename(
-    HUC8     = huc8,
-    Name     = name,
-    States   = states,
-    AreaSqKm = area_km2_clipped
-  ) %>%
-  mutate(
-    HUC8      = as.character(HUC8),
-    AreaAcres = AreaSqKm * 247.105
-  ) %>%
-  select(HUC8, Name, States, AreaSqKm, AreaAcres)
-
-# Load pre-computed centroids for popups
-huc8_centroids <- read.csv(CENTROIDS_URL, stringsAsFactors = FALSE)
-
-rm(huc8)
-gc()
+message(sprintf("Ready: %d dates, %d HUC8s", length(available_dates), nrow(huc8_base)))
 
 # ------------------------------------------------------------------------------
 # CLIMATOLOGY: pre-compute water year day
@@ -128,8 +111,6 @@ grouped_choices <- split(
   setNames(basin_lookup$HUC8, basin_lookup$Name),
   basin_lookup$group
 )
-
-message(sprintf("Ready: %d dates, %d HUC8s", length(available_dates), nrow(huc8_base)))
 
 # ------------------------------------------------------------------------------
 # HELPERS
@@ -632,17 +613,13 @@ server <- function(input, output, session) {
     
     tags$div(
       class = "clim-hover-box",
-      # Date header
       tags$div(style = "font-weight:bold; margin-bottom:4px;
                         color:#333; border-bottom:1px solid #ddd;
                         padding-bottom:3px;",
                date_lbl),
-      # Current WY
       tags$div(style = "color:#e74c3c; margin-bottom:4px;",
                paste0("WY ", cd$display_wy, ": ", cy_val, " ", unit_lbl)),
-      # Divider
       tags$div(style = "border-top:1px solid #eee; margin-bottom:4px;"),
-      # Percentiles
       tags$div(style = "color:#555;",
                tags$div(paste0("90th:   ", fmt(match_row$p90[1]), " ", unit_lbl)),
                tags$div(paste0("75th:   ", fmt(match_row$p75[1]), " ", unit_lbl)),
@@ -681,7 +658,6 @@ server <- function(input, output, session) {
     
     p <- plot_ly(source = "clim_plot") %>%
       
-      # Ribbons — customdata carries wy_doy for hover lookup
       add_ribbons(data=rb, x=~x_date, ymin=~p00, ymax=~p100,
                   customdata=~wy_doy,
                   fillcolor="rgba(180,180,180,0.25)", line=list(color="transparent"),
@@ -700,7 +676,6 @@ server <- function(input, output, session) {
                   name="25th\u201375th Percentile", hoverinfo="none",
                   showlegend=TRUE) %>%
       
-      # Percentile lines — customdata carries wy_doy, no visible tooltip
       add_lines(data=rb, x=~x_date, y=~p90,
                 customdata=~wy_doy,
                 line=list(color="transparent",width=0), name="90th Pct",
@@ -726,14 +701,12 @@ server <- function(input, output, session) {
                 line=list(color="transparent",width=0), name="10th Pct",
                 showlegend=FALSE, hoverinfo="none") %>%
       
-      # Current WY line — customdata carries wy_doy
       add_lines(data=cy, x=~x_date, y=~swe_volume_af,
                 customdata=~wy_doy,
                 line=list(color="#e74c3c", width=4),
                 name=paste0("WY ", disp_wy, " (", wy_label, ")"),
                 showlegend=TRUE, hoverinfo="none") %>%
       
-      # Register hover and unhover events so Shiny receives them reliably
       event_register("plotly_hover") %>%
       event_register("plotly_unhover") %>%
       
@@ -773,9 +746,9 @@ server <- function(input, output, session) {
       paste0("SNODAS_Climatology_", gsub(" ", "_", huc_name), ".csv")
     },
     content = function(file) {
-      cd         <- clim_data()
-      units      <- input$clim_units
-      unit_lbl   <- if (units == "kaf") "KAF" else "AF"
+      cd       <- clim_data()
+      units    <- input$clim_units
+      unit_lbl <- if (units == "kaf") "KAF" else "AF"
       
       rb <- cd$ribbons
       cy <- cd$current
