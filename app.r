@@ -242,6 +242,64 @@ ui <- fluidPage(
         min-width: 180px;
         box-shadow: 0 1px 4px rgba(0,0,0,0.12);
       }
+      /* --- Info sidebar panel --- */
+      .info-panel {
+        display: none;
+        position: fixed;
+        top: 0; right: 0;
+        width: 340px; height: 100%;
+        background: #fff;
+        border-left: 2px solid #1a5276;
+        box-shadow: -4px 0 12px rgba(0,0,0,0.15);
+        z-index: 99999;
+        overflow-y: auto;
+        padding: 20px 20px 40px 20px;
+        font-size: 13px;
+        line-height: 1.6;
+      }
+      .info-panel h4 {
+        color: #1a5276;
+        border-bottom: 1px solid #d0dae4;
+        padding-bottom: 6px;
+        margin-top: 20px;
+        margin-bottom: 8px;
+        font-size: 14px;
+      }
+      .info-panel h4:first-of-type { margin-top: 0; }
+      .info-panel p, .info-panel li { color: #333; }
+      .info-panel ul { padding-left: 16px; margin: 4px 0; }
+      .info-panel li { margin-bottom: 4px; }
+      .info-overlay {
+        display: none;
+        position: fixed;
+        top: 0; left: 0;
+        width: 100%; height: 100%;
+        background: rgba(0,0,0,0.25);
+        z-index: 99998;
+      }
+      .info-close-btn {
+        float: right;
+        background: none;
+        border: none;
+        font-size: 20px;
+        cursor: pointer;
+        color: #666;
+        line-height: 1;
+        margin-top: -4px;
+      }
+      .info-toggle-btn {
+        background: rgba(255,255,255,0.18);
+        border: 1px solid rgba(255,255,255,0.5);
+        color: white;
+        border-radius: 4px;
+        padding: 4px 10px;
+        font-size: 13px;
+        cursor: pointer;
+        float: right;
+        margin-top: 2px;
+      }
+      .info-toggle-btn:hover { background: rgba(255,255,255,0.30); }
+      
     ")),
     tags$script(HTML("
       $(document).on('shiny:connected', function() {
@@ -253,14 +311,92 @@ ui <- fluidPage(
           $('#current_date, #compare_date').prop('readonly', true);
         });
       });
+      // Info panel toggle
+      $(document).on('click', '#info_toggle_btn', function() {
+        $('#info_panel, #info_overlay').fadeIn(200);
+      });
+      $(document).on('click', '#info_close_btn, #info_overlay', function() {
+        $('#info_panel, #info_overlay').fadeOut(200);
+      });
     "))
   ),
   
   div(class = "title-bar",
+      tags$button(id = "info_toggle_btn", class = "info-toggle-btn",
+                  "\u2139\ufe0f About & Help"),
       tags$h3("\U0001f3d4\ufe0f Watershed level snow water volumes in Washington State"),
       tags$p("Daily snow water equivalent by HUC8 watershed using SNODAS \u00b7 NOAA - NOHRSC \u00b7 Oct 2003\u2013present")
   ),
+  # Dim overlay (behind the panel)
+  tags$div(id = "info_overlay", class = "info-overlay"),
   
+  # Collapsible info panel
+  tags$div(id = "info_panel", class = "info-panel",
+           
+           tags$button(id = "info_close_btn", class = "info-close-btn", HTML("&times;")),
+           
+           tags$h4("\u2139\ufe0f About This App"),
+           tags$p("This application displays daily gridded snow water equivalent (SWE)
+            estimates for Washington State's 71 HUC8 watersheds, derived from the
+            NOAA SNODAS model. Watershed volumes are computed by clipping SNODAS
+            raster cells to each HUC8 boundary and summing pixel contributions
+            weighted by area."),
+           
+           tags$h4("\U0001f4e1 About SNODAS"),
+           tags$p("SNODAS (Snow Data Assimilation System) is produced daily by NOAA's
+            National Snow and Ice Data Center (NSIDC). It provides ~1 km gridded
+            estimates of snow depth and SWE across the contiguous United States
+            by assimilating satellite, airborne, and ground-based snow observations
+            into an energy- and mass-balance snowpack model."),
+           tags$ul(
+             tags$li("Spatial resolution: ~1 km (30 arc-seconds)"),
+             tags$li("Temporal coverage: October 2003 \u2013 present"),
+             tags$li("Updated daily, typically by mid-morning Mountain Time"),
+             tags$li(tags$a(href="https://nsidc.org/data/g02158", target="_blank",
+                            "NSIDC SNODAS product page (G02158)"))
+           ),
+           
+           tags$h4("\U0001f5d3\ufe0f How to Use \u2014 Date Explorer"),
+           tags$ul(
+             tags$li(tags$b("Current / Primary Date:"), " The main date displayed on the map and table."),
+             tags$li(tags$b("Comparison Date:"), " A second date for side-by-side or difference analysis.
+                     Use the ", tags$b("Jump to Peak Season"), " dropdown to quickly navigate
+                     to April 1st of any year."),
+             tags$li(tags$b("Map View:"), " Toggle between Current, Comparison, or Difference
+                     (Current minus Comparison) choropleth views."),
+             tags$li(tags$b("Swap Dates:"), " Reverses the current and comparison dates instantly."),
+             tags$li(tags$b("Clicking a watershed"), " on the map opens a popup with SWE detail.
+                     Use ", tags$b("Clear Popup"), " to dismiss it."),
+             tags$li(tags$b("Download CSV"), " in the table exports all 71 watersheds for the
+                     selected date pair.")
+           ),
+           
+           tags$h4("\U0001f4c8 How to Use \u2014 Climatology"),
+           tags$ul(
+             tags$li("Select any of the 71 HUC8 watersheds from the dropdown."),
+             tags$li("The chart shows historical SWE percentile ribbons (min/max,
+               10th\u201390th, 25th\u201375th) computed from all available water years
+               except the current one."),
+             tags$li("The red line is the current (or most recent) water year."),
+             tags$li("Hover over the chart to see exact values in the info box."),
+             tags$li("The ", tags$b("% of Normal"), " badge compares the most recent
+               SWE value to the historical median for that day of the water year."),
+             tags$li("Use ", tags$b("Download Climatology Data (CSV)"),
+                     " to export the full percentile table.")
+           ),
+           
+           tags$h4("\U0001f4e7 Contact"),
+           tags$p(
+             # ---- Fill in your details below ----
+             "Jeff Marti", tags$br(),
+             tags$a(href="mailto:jeffjmarti@gmail.com", "jeffjmarti@gmail.com"), tags$br(),
+             tags$a(href="https://github.com/jeffmarti/snodas-huc8", target="_blank",
+                    "github.com/jeffmarti/snodas-huc8")
+           ),
+           
+           tags$p(style="color:#aaa; font-size:11px; margin-top:20px;",
+                  "App built in R Shiny \u00b7 Data: NOAA NSIDC, USGS WBD")
+  ),
   tabsetPanel(
     id = "main_tabs",
     
