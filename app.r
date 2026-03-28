@@ -257,8 +257,8 @@ ui <- fluidPage(
   ),
   
   div(class = "title-bar",
-      tags$h3("\U0001f3d4\ufe0f Washington State SNODAS SWE Explorer"),
-      tags$p("Daily snow water equivalent by HUC8 watershed \u00b7 NOAA SNODAS \u00b7 Oct 2003\u2013present")
+      tags$h3("\U0001f3d4\ufe0f Watershed level snow water volumes in Washington State"),
+      tags$p("Daily snow water equivalent by HUC8 watershed using SNODAS \u00b7 NOAA - NOHRSC \u00b7 Oct 2003\u2013present")
   ),
   
   tabsetPanel(
@@ -545,14 +545,18 @@ server <- function(input, output, session) {
       ),
       options = list(pageLength=15, scrollX=FALSE, dom="Bfrtip",
                      buttons=list(list(extend="csv", text="\u2193 Download CSV",
-                                       filename="snodas_huc8_comparison")),
+                                       filename="snodas_huc8_comparison",
+                                       exportOptions=list(
+                                         modifier=list(page="all"),
+                                         columns=":visible"
+                                       ))),
                      columnDefs=list(list(visible=FALSE, targets=7)),
                      order=list(list(3,"desc"))),
       extensions="Buttons", rownames=FALSE, class="stripe hover compact"
     ) %>%
       formatStyle("Difference (AF)", valueColumns=".diff_af_num",
                   color=styleInterval(0, c("#922b21","#1a5276")), fontWeight="bold")
-  })
+  }, server = FALSE)  # <-- add this here, outside the datatable() call
   
   # ============================================================================
   # CLIMATOLOGY TAB SERVER
