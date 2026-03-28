@@ -351,7 +351,6 @@ ui <- fluidPage(
             by assimilating satellite, airborne, and ground-based snow observations
             into an energy- and mass-balance snowpack model."),
            tags$ul(
-             tags$li("Spatial resolution: ~1 km (30 arc-seconds)"),
              tags$li("Temporal coverage: October 2003 \u2013 present"),
              tags$li("Updated daily, typically by mid-morning Pacific Time"),
              tags$li(tags$a(href="https://nsidc.org/data/g02158", target="_blank",
