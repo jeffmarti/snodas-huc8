@@ -337,10 +337,11 @@ ui <- fluidPage(
            
            tags$h4("\u2139\ufe0f About This App"),
            tags$p("This application displays daily gridded snow water equivalent (SWE)
-            estimates for Washington State's 71 HUC8 watersheds, derived from the
-            NOAA SNODAS model. Watershed volumes are computed by clipping SNODAS
-            raster cells to each HUC8 boundary and summing pixel contributions
-            weighted by area."),
+            estimates for 71 HUC8 watersheds falling within Washington State, derived from the
+            NOAA SNODAS model. The estimates are aggregated to provide an estimate of the volume
+            of water stored in the snowpack for each watershed on any given day. The app allows
+            users to explore current and historical SWE conditions, compare different dates,
+            and examine how current conditions relate to the historical record."),
            
            tags$h4("\U0001f4e1 About SNODAS"),
            tags$p("SNODAS (Snow Data Assimilation System) is produced daily by NOAA's
@@ -351,7 +352,7 @@ ui <- fluidPage(
            tags$ul(
              tags$li("Spatial resolution: ~1 km (30 arc-seconds)"),
              tags$li("Temporal coverage: October 2003 \u2013 present"),
-             tags$li("Updated daily, typically by mid-morning Mountain Time"),
+             tags$li("Updated daily, typically by mid-morning Pacific Time"),
              tags$li(tags$a(href="https://nsidc.org/data/g02158", target="_blank",
                             "NSIDC SNODAS product page (G02158)"))
            ),
