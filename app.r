@@ -459,7 +459,34 @@ ui <- fluidPage(
              tags$li(tags$a(href="https://nsidc.org/data/g02158", target="_blank",
                             "NSIDC SNODAS product page (G02158)"))
            ),
-           
+           tags$h4("\U0001f4cf Understanding Acre-Feet"),
+           tags$p("All snow water volumes in this app are expressed in ",
+                  tags$b("acre-feet (AF)."), " One acre-foot is the volume of water
+                  needed to cover one acre of land \u2014 roughly the size of a football
+                  field \u2014 to a depth of one foot. It equals about 326,000 gallons."),
+           tags$p("To put the numbers in context:"),
+           tags$ul(
+             tags$li(
+               tags$b("1,000 AF"), " \u2014 annual water supply for approximately ",
+               tags$b("3,200 Washington households"),
+               tags$span(style = "color:#888; font-size:11px;",
+                         " (based on WA avg. 111 gal/person/day, 2.5 people/household)")
+             ),
+             tags$li(
+               tags$b("1,000 AF"), " \u2014 enough to irrigate approximately ",
+               tags$b("300 acres of Eastern Washington cropland"),
+               tags$span(style = "color:#888; font-size:11px;",
+                         " (based on ~3.25 AF/acre/season, WSU Extension)")
+             ),
+             tags$li(
+               tags$b("1,000,000 AF (1 MAF)"), " \u2014 annual water supply for roughly ",
+               tags$b("3.2 million WA households"), ", or enough to irrigate ",
+               tags$b("300,000 acres"), " of Eastern WA crops"
+             ),
+           ),
+           tags$p(style = "color:#888; font-size:11px; margin-top:4px;",
+                  "Sources: NEEF/USGS Water Use in Washington (2015); ",
+                  "WSU Extension, Washington Water Rights for Agricultural Producers"),
            tags$h4("\U0001f5d3\ufe0f How to Use \u2014 Date Explorer"),
            tags$ul(
              tags$li(tags$b("Current / Primary Date:"), " The main date displayed on the map and table."),
@@ -735,25 +762,9 @@ server <- function(input, output, session) {
     direction <- if (delta_af >= 0) "greater" else "less"
     color     <- if (delta_af >= 0) "#1a5276" else "#922b21"
 
-    # Real-world context helper
-    # Sources:
-    #   Households: WA avg 111 gpd/person x 2.5 people = 101,288 gal/household/yr
-    #               (NEEF/USGS Water Use in Washington, 2015)
-    #   Irrigated acres: Columbia Basin crops ~3.25 AF/acre/season
-    #               (WSU Extension, Washington Water Rights for Agricultural Producers)
-    af_context <- function(af) {
-      households   <- af * 3.22
-      irr_acres    <- af / 3.25
-      sprintf(
-        "\u2248 %s WA households supplied for a year \u00b7 %s acres of Eastern WA cropland irrigated",
-        formatC(round(households, -2), format = "f", digits = 0, big.mark = ","),
-        formatC(round(irr_acres,    -1), format = "f", digits = 0, big.mark = ",")
-      )
-    }
+
 
     div(class = "summary-bar",
-
-        # Line 1: directional comparison statement
         div(style = "font-size: 15px; color: #333;",
             tagList(
               tags$b(format(valid_current(), "%B %d, %Y")), " SWE was ",
@@ -764,20 +775,10 @@ server <- function(input, output, session) {
                       if (!is.na(delta_pct)) sprintf("%.1f%%", abs(delta_pct)) else "N/A")
             )
         ),
-
-        # Line 2: Current total + context
-        div(style = "font-size: 13px; color: #444; margin-top: 6px;",
-            tags$b(sprintf("Current (%s):", format(valid_current(), "%b %d, %Y"))),
-            sprintf(" %s AF  \u2014  ", formatC(cur_total, format="f", digits=0, big.mark=",")),
-            tags$span(style = "color: #666; font-style: italic;", af_context(cur_total))
-        ),
-
-        # Line 3: Comparison total + context
-        div(style = "font-size: 13px; color: #444; margin-top: 4px;",
-            tags$b(sprintf("Comparison (%s):", format(valid_compare(), "%b %d, %Y"))),
-            sprintf(" %s AF  \u2014  ", formatC(cmp_total, format="f", digits=0, big.mark=",")),
-            tags$span(style = "color: #666; font-style: italic;", af_context(cmp_total))
-        )
+        div(style = "font-size: 13px; color: #666; margin-top: 4px;",
+            sprintf("Current: %s AF  \u2022  Comparison: %s AF",
+                    formatC(cur_total, format="f", digits=0, big.mark=","),
+                    formatC(cmp_total, format="f", digits=0, big.mark=",")))
     )
   })
   output$map_title <- renderText({
@@ -1321,6 +1322,10 @@ server <- function(input, output, session) {
     tick_doys   <- as.integer(tick_dates - wy_start) + 1
     tick_labels <- format(tick_dates, "%b 1")
     
+    # Extend y-axis range to Sep 30 to accommodate late-melting basins
+    max_doy     <- max(metrics_data()$meltout_wy_doy, na.rm = TRUE)
+    y2_range    <- c(min(tick_doys) - 5, max(max_doy + 5, 366))
+    
     # ---- Panel 1: Peak SWE Volume ----
     p1 <- plot_ly() %>%
       add_trace(
@@ -1400,6 +1405,14 @@ server <- function(input, output, session) {
                          huc_name),
           font = list(size = 15)
         ),
+        yaxis2 = list(
+          tickvals  = tick_doys,
+          ticktext  = tick_labels,
+          range     = y2_range,
+          showgrid  = TRUE,
+          gridcolor = "rgba(200,200,200,0.5)",
+          tickfont  = list(size = 10)
+        ),
         annotations = list(
           list(text="<b>Peak SWE Volume</b>", x=0.5, y=1.0,
                xref="paper", yref="paper", xanchor="center", yanchor="bottom",
@@ -1413,7 +1426,6 @@ server <- function(input, output, session) {
         margin        = list(t = 70, b = 50)
       )
   })
-  
   output$metrics_download_csv <- downloadHandler(
     filename = function() {
       huc_name <- basin_lookup$Name[basin_lookup$HUC8 == input$metrics_huc][1]
