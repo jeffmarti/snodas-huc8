@@ -734,21 +734,52 @@ server <- function(input, output, session) {
     delta_pct <- if (cmp_total > 0) (delta_af / cmp_total) * 100 else NA
     direction <- if (delta_af >= 0) "greater" else "less"
     color     <- if (delta_af >= 0) "#1a5276" else "#922b21"
+
+    # Real-world context helper
+    # Sources:
+    #   Households: WA avg 111 gpd/person x 2.5 people = 101,288 gal/household/yr
+    #               (NEEF/USGS Water Use in Washington, 2015)
+    #   Irrigated acres: Columbia Basin crops ~3.25 AF/acre/season
+    #               (WSU Extension, Washington Water Rights for Agricultural Producers)
+    af_context <- function(af) {
+      households   <- af * 3.22
+      irr_acres    <- af / 3.25
+      sprintf(
+        "\u2248 %s WA households supplied for a year \u00b7 %s acres of Eastern WA cropland irrigated",
+        formatC(round(households, -2), format = "f", digits = 0, big.mark = ","),
+        formatC(round(irr_acres,    -1), format = "f", digits = 0, big.mark = ",")
+      )
+    }
+
     div(class = "summary-bar",
+
+        # Line 1: directional comparison statement
         div(style = "font-size: 15px; color: #333;",
-            tagList(tags$b(format(valid_current(), "%B %d, %Y")), " SWE was ",
-                    tags$b(style = sprintf("color:%s;", color), direction), " than ",
-                    tags$b(format(valid_compare(), "%B %d, %Y")),
-                    sprintf(" by %s AF (%s)",
-                            formatC(abs(delta_af), format="f", digits=0, big.mark=","),
-                            if (!is.na(delta_pct)) sprintf("%.1f%%", abs(delta_pct)) else "N/A"))),
-        div(style = "font-size: 13px; color: #666; margin-top: 4px;",
-            sprintf("Current: %s AF  \u2022  Comparison: %s AF",
-                    formatC(cur_total, format="f", digits=0, big.mark=","),
-                    formatC(cmp_total, format="f", digits=0, big.mark=",")))
+            tagList(
+              tags$b(format(valid_current(), "%B %d, %Y")), " SWE was ",
+              tags$b(style = sprintf("color:%s;", color), direction), " than ",
+              tags$b(format(valid_compare(), "%B %d, %Y")),
+              sprintf(" by %s AF (%s)",
+                      formatC(abs(delta_af), format="f", digits=0, big.mark=","),
+                      if (!is.na(delta_pct)) sprintf("%.1f%%", abs(delta_pct)) else "N/A")
+            )
+        ),
+
+        # Line 2: Current total + context
+        div(style = "font-size: 13px; color: #444; margin-top: 6px;",
+            tags$b(sprintf("Current (%s):", format(valid_current(), "%b %d, %Y"))),
+            sprintf(" %s AF  \u2014  ", formatC(cur_total, format="f", digits=0, big.mark=",")),
+            tags$span(style = "color: #666; font-style: italic;", af_context(cur_total))
+        ),
+
+        # Line 3: Comparison total + context
+        div(style = "font-size: 13px; color: #444; margin-top: 4px;",
+            tags$b(sprintf("Comparison (%s):", format(valid_compare(), "%b %d, %Y"))),
+            sprintf(" %s AF  \u2014  ", formatC(cmp_total, format="f", digits=0, big.mark=",")),
+            tags$span(style = "color: #666; font-style: italic;", af_context(cmp_total))
+        )
     )
   })
-  
   output$map_title <- renderText({
     view <- input$map_view
     if (view == "Current")    return(paste("Current:",    format(valid_current(), "%B %d, %Y")))
