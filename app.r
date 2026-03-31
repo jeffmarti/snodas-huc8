@@ -163,16 +163,18 @@ swe_popup <- function(d, date_label) {
 }
 
 diff_popup <- function(d, cur_label, cmp_label) {
-  diff_af <- ifelse(is.na(d$diff_af), 0, d$diff_af)
-  diff_in <- ifelse(is.na(d$diff_in), 0, d$diff_in)
-  diff_mm <- ifelse(is.na(d$diff_mm), 0, d$diff_mm)
+  diff_af  <- ifelse(is.na(d$diff_af), 0, d$diff_af)
+  diff_in  <- ifelse(is.na(d$diff_in), 0, d$diff_in)
+  diff_mm  <- ifelse(is.na(d$diff_mm), 0, d$diff_mm)
+  pct_str  <- if (!is.na(d$diff_pct)) sprintf(" (%+.1f%%)", d$diff_pct) else ""
   sprintf(
     paste0("<b>%s</b><br/><small>%s vs %s</small><br/>HUC8: %s<br/>",
            "<hr style='margin:4px 0'>",
-           "Volume change: <b>%s AF</b><br/>",
+           "Volume change: <b>%s AF%s</b><br/>",
            "SWE change: %+.1f in | %+.0f mm<br/>Area: %s acres"),
     d$Name, cur_label, cmp_label, d$HUC8,
     formatC(diff_af, format = "f", digits = 0, big.mark = ",", flag = "+"),
+    pct_str,
     diff_in, diff_mm,
     formatC(d$AreaAcres, format = "f", digits = 0, big.mark = ",")
   )
@@ -606,11 +608,26 @@ ui <- fluidPage(
                                    actionButton("clear_popup", "\u2715 Clear Popup", class = "btn btn-default btn-sm")
                ))
              ),
-             
+            
              uiOutput("summary_bar"),
+             
+             conditionalPanel(
+               condition = "input.map_view == 'Difference'",
+               fluidRow(
+                 column(12,
+                        radioButtons("diff_display",
+                                     label    = "Difference Display",
+                                     choices  = c("Volume (Acre-Feet)" = "af",
+                                                  "Percent Difference" = "pct"),
+                                     selected = "af",
+                                     inline   = TRUE)
+                 )
+               )
+             ),
+             
              div(class = "map-title", textOutput("map_title")),
              leafletOutput("main_map", height = "500px"),
-             tags$div(style = "height: 20px;"),
+    
              
              fluidRow(
                column(12,
@@ -654,8 +671,9 @@ ui <- fluidPage(
                     "Climatology: SNODAS Oct 2003\u2013present \u00b7 ",
                     "Ribbons: min/max, 10th\u201390th, 25th\u201375th percentile by day of water year"),
              
-             tags$hr(style = "border-top: 1px solid #d0dae4; margin: 10px 0 20px 0;"),
-             
+            #DIVIDER LINE BETWEEN TWO PLOTS
+             tags$hr(style = "margin: 20px 0; border-top: 2px solid #ddd;"),
+
              plotlyOutput("monthly_profile_plot", height = "400px"),
              
              tags$p(style = "color: #999; font-size: 11px; text-align: center; padding-bottom: 10px;",
@@ -749,7 +767,9 @@ server <- function(input, output, session) {
       mutate(diff_af  = swe_volume_af - cmp_af,
              diff_kaf = swe_volume_kaf - cmp_kaf,
              diff_in  = swe_mean_in - cmp_in,
-             diff_mm  = swe_mean_mm - cmp_mm)
+             diff_mm  = swe_mean_mm - cmp_mm,
+             diff_pct = ifelse(!is.na(cmp_af) & cmp_af > 0,        # <-- ADD THIS
+                               (diff_af / cmp_af) * 100, NA_real_)) # <-- AND THIS
   })
   
   table_data <- reactive({ get_table_data(valid_current(), valid_compare()) })
@@ -840,26 +860,57 @@ server <- function(input, output, session) {
         addPolylines(data=wa_border, color="#333333", weight=1.5, opacity=0.8)
       
     } else {
-      d       <- diff_data()
-      max_abs <- max(abs(d$diff_af), na.rm = TRUE)
-      if (is.infinite(max_abs) || max_abs == 0) max_abs <- 1
-      pal <- colorNumeric(
-        palette = c("#922b21","#e74c3c","#fadbd8","#ffffff","#d6eaf8","#2e86c1","#1a5276"),
-        domain = c(-max_abs, max_abs), na.color = "#cccccc")
-      lbl <- sprintf("%s \u2014 %s AF", d$Name,
-                     formatC(ifelse(is.na(d$diff_af),0,d$diff_af),
-                             format="f", digits=0, big.mark=",", flag="+"))
-      leafletProxy("main_map", data = d) %>% clearShapes() %>% clearControls() %>%
-        addPolygons(fillColor=~pal(diff_af), fillOpacity=0.75,
-                    color="white", weight=1, opacity=1,
-                    highlightOptions=highlightOptions(weight=2.5,color="#333",
-                                                      fillOpacity=0.9,bringToFront=TRUE),
-                    label=lbl, layerId=~HUC8) %>%
-        addLegend(pal=pal, values=c(-max_abs,max_abs), title="Volume Change (AF)",
-                  position="bottomright", opacity=0.85,
-                  labFormat=labelFormat(transform=function(x) round(x,0)),
-                  na.label="No data") %>%
-        addPolylines(data=wa_border, color="#333333", weight=1.5, opacity=0.8)
+      d         <- diff_data()
+      diff_mode <- input$diff_display
+      
+      if (diff_mode == "pct") {
+        # --- Percent difference display ---
+        max_abs <- max(abs(d$diff_pct), na.rm = TRUE)
+        if (is.infinite(max_abs) || max_abs == 0 || is.na(max_abs)) max_abs <- 10
+        pal <- colorNumeric(
+          palette = c("#922b21","#e74c3c","#fadbd8","#ffffff","#d6eaf8","#2e86c1","#1a5276"),
+          domain  = c(-max_abs, max_abs), na.color = "#cccccc")
+        lbl <- sprintf("%s \u2014 %s", d$Name,
+                       ifelse(is.na(d$diff_pct), "N/A",
+                              sprintf("%+.1f%%", d$diff_pct)))
+        leafletProxy("main_map", data = d) %>% clearShapes() %>% clearControls() %>%
+          addPolygons(fillColor = ~pal(diff_pct), fillOpacity = 0.75,
+                      color = "white", weight = 1, opacity = 1,
+                      highlightOptions = highlightOptions(weight = 2.5, color = "#333",
+                                                          fillOpacity = 0.9, bringToFront = TRUE),
+                      label = lbl, layerId = ~HUC8) %>%
+          addLegend(pal = pal, values = c(-max_abs, max_abs),
+                    title    = paste0("% Change<br/><small>",
+                                      format(valid_current(), "%b %d"), " vs ",
+                                      format(valid_compare(), "%b %d, %Y"), "</small>"),
+                    position = "bottomright", opacity = 0.85,
+                    labFormat = labelFormat(suffix   = "%",
+                                            transform = function(x) round(x, 0)),
+                    na.label  = "No data / zero base") %>%
+          addPolylines(data = wa_border, color = "#333333", weight = 1.5, opacity = 0.8)
+        
+      } else {
+        # --- Acre-feet difference display (original) ---
+        max_abs <- max(abs(d$diff_af), na.rm = TRUE)
+        if (is.infinite(max_abs) || max_abs == 0) max_abs <- 1
+        pal <- colorNumeric(
+          palette = c("#922b21","#e74c3c","#fadbd8","#ffffff","#d6eaf8","#2e86c1","#1a5276"),
+          domain = c(-max_abs, max_abs), na.color = "#cccccc")
+        lbl <- sprintf("%s \u2014 %s AF", d$Name,
+                       formatC(ifelse(is.na(d$diff_af), 0, d$diff_af),
+                               format = "f", digits = 0, big.mark = ",", flag = "+"))
+        leafletProxy("main_map", data = d) %>% clearShapes() %>% clearControls() %>%
+          addPolygons(fillColor = ~pal(diff_af), fillOpacity = 0.75,
+                      color = "white", weight = 1, opacity = 1,
+                      highlightOptions = highlightOptions(weight = 2.5, color = "#333",
+                                                          fillOpacity = 0.9, bringToFront = TRUE),
+                      label = lbl, layerId = ~HUC8) %>%
+          addLegend(pal = pal, values = c(-max_abs, max_abs), title = "Volume Change (AF)",
+                    position = "bottomright", opacity = 0.85,
+                    labFormat = labelFormat(transform = function(x) round(x, 0)),
+                    na.label = "No data") %>%
+          addPolylines(data = wa_border, color = "#333333", weight = 1.5, opacity = 0.8)
+      }
     }
   })
   
