@@ -5,6 +5,7 @@
 # Tab 1: Date Explorer -- leaflet map with SWE choropleth
 # Tab 2: Climatology  -- SWE percentile ribbon chart with hover box + CSV download
 # Tab 3: Peak & Melt-Out -- annual peak SWE and melt-out date by water year
+# Tab 4: Snowpack & Climate -- statewide SWE change vs NCEI temp/precip anomalies
 #
 # Data source: https://github.com/jeffmarti/snodas-huc8
 # Deploy to  : waterwater.shinyapps.io
@@ -16,6 +17,8 @@
 #     huc8_base.rds is simplified at dTolerance=1.0 (~9.5MB vs original 26MB).
 #   - Added Tab 3: Peak & Melt-Out showing annual peak SWE volume and last
 #     snow-free date (melt-out) per watershed per water year, with CSV download.
+#   - Added Tab 4: Snowpack & Climate comparing statewide SWE monthly change
+#     to NCEI WA statewide temperature and precipitation anomalies.
 # ==============================================================================
 
 
@@ -23,6 +26,7 @@ library(shiny)
 library(leaflet)
 library(sf)
 library(dplyr)
+library(readr)
 library(DT)
 library(plotly)
 
@@ -117,6 +121,88 @@ grouped_choices <- split(
 )
 
 # ------------------------------------------------------------------------------
+# CLIMATE COMPARE: load NCEI statewide WA data + compute statewide SWE monthly
+# ------------------------------------------------------------------------------
+
+# -- Load NCEI statewide WA --------------------------------------------------
+# File written by scripts/daily_update.R (monthly, after the 10th).
+# If it doesn't exist yet (first deploy), the tab renders with SWE only.
+
+ncei_wa_file <- "data/ncei_climate_monthly_wa.csv"
+
+if (file.exists(ncei_wa_file)) {
+  ncei_raw_wa <- read.csv(ncei_wa_file, stringsAsFactors = FALSE)
+} else {
+  message("NOTE: data/ncei_climate_monthly_wa.csv not found -- climate panels will be empty")
+  ncei_raw_wa <- data.frame()
+}
+
+if (nrow(ncei_raw_wa) > 0) {
+  ncei_temp <- ncei_raw_wa %>%
+    filter(variable == "tavg") %>%
+    mutate(bar_date = as.Date(sprintf("%04d-%02d-15", year, month))) %>%
+    arrange(bar_date)
+  
+  ncei_precip <- ncei_raw_wa %>%
+    filter(variable == "pcp") %>%
+    mutate(bar_date = as.Date(sprintf("%04d-%02d-15", year, month))) %>%
+    arrange(bar_date)
+} else {
+  ncei_temp   <- data.frame(bar_date = as.Date(character()),
+                            year = integer(), month = integer(),
+                            value = numeric(), anomaly = numeric())
+  ncei_precip <- data.frame(bar_date = as.Date(character()),
+                            year = integer(), month = integer(),
+                            value = numeric(), anomaly = numeric())
+}
+
+# -- Statewide monthly SWE deltas --------------------------------------------
+# Mirrors get_monthly_profile() but summed across all 71 HUC8s.
+# Uses the same Oct->Nov ... Aug->Sep month-pair convention.
+# bar_date = 15th of the "from" month (aligns with NCEI bar_dates).
+# Note: as.Date(swe_date) wrapper is required here because swe_date may not
+# yet be a Date object in all execution contexts.
+
+{
+  # Sum all HUC8s on the 1st of each month, sorted chronologically
+  monthly_totals_all <- history %>%
+    filter(!is.na(swe_volume_af),
+           as.integer(format(as.Date(swe_date), "%d")) == 1L) %>%
+    mutate(
+      month = as.integer(format(as.Date(swe_date), "%m")),
+      year  = as.integer(format(as.Date(swe_date), "%Y")),
+      wy    = ifelse(month >= 10, year + 1, year)
+    ) %>%
+    group_by(swe_date, month, year, wy) %>%
+    summarise(total_af = sum(swe_volume_af, na.rm = TRUE), .groups = "drop") %>%
+    arrange(swe_date)
+  
+  # lag() on sorted dates gives all 12 month-to-month deltas naturally,
+  # including Sep->Oct, without any water-year boundary complications.
+  swe_monthly_statewide <- monthly_totals_all %>%
+    mutate(
+      prev_af    = lag(total_af),
+      prev_month = lag(month),
+      prev_year  = lag(year),
+      delta_af   = total_af - prev_af
+    ) %>%
+    filter(!is.na(delta_af)) %>%
+    mutate(
+      bar_date = as.Date(sprintf("%04d-%02d-15", prev_year, prev_month))
+    ) %>%
+    select(wy, month_num = prev_month, delta_af, bar_date) %>%
+    arrange(bar_date)
+  
+  rm(monthly_totals_all)
+}
+message(sprintf(
+  "Climate Compare ready: %d SWE months, %d temp months, %d precip months",
+  nrow(swe_monthly_statewide),
+  nrow(ncei_temp),
+  nrow(ncei_precip)
+))
+
+# ------------------------------------------------------------------------------
 # HELPERS
 # ------------------------------------------------------------------------------
 
@@ -209,6 +295,7 @@ get_clim_data <- function(huc_id) {
   list(ribbons = ribbons, current = current_df,
        hist = hist_df, display_wy = display_wy)
 }
+
 get_monthly_profile <- function(huc_id) {
   
   month_labels <- c("10"="Oct","11"="Nov","12"="Dec",
@@ -280,6 +367,7 @@ get_monthly_profile <- function(huc_id) {
     left_join(cur_delta_df, by = "month_num") %>%
     mutate(above_median = !is.na(current_delta) & current_delta >= median_delta)
 }
+
 get_annual_metrics <- function(huc_id) {
   df <- history %>%
     filter(HUC8 == huc_id, !is.na(swe_volume_af), wy < current_wy)
@@ -561,6 +649,16 @@ ui <- fluidPage(
                      " to export the full table of peak and melt-out values.")
            ),
            
+           tags$h4("\U0001f321\ufe0f How to Use \u2014 Snow Storage Gain/Loss & Climate Comparison"),
+           tags$p(
+             "The ", tags$b("Snow Storage Gain/Loss & Climate Comparison"), " tab shows the
+  month-to-month change in total statewide snowpack \u2014 summed across all 71
+  HUC8 watersheds \u2014 as a continuous time series from October 2003 to present.",
+             "Washington State monthly temperature and precipitation anomalies from NOAA NCEI
+  are displayed in parallel panels on the same time axis, allowing you to explore
+  how warmer or wetter months relate to snowpack gains and losses across the full
+  SNODAS record."
+           ),
            tags$h4("\U0001f4e7 Contact"),
            tags$p(
              "Jeff Marti", tags$br(),
@@ -608,7 +706,7 @@ ui <- fluidPage(
                                    actionButton("clear_popup", "\u2715 Clear Popup", class = "btn btn-default btn-sm")
                ))
              ),
-            
+             
              uiOutput("summary_bar"),
              
              conditionalPanel(
@@ -627,7 +725,6 @@ ui <- fluidPage(
              
              div(class = "map-title", textOutput("map_title")),
              leafletOutput("main_map", height = "500px"),
-    
              
              fluidRow(
                column(12,
@@ -671,9 +768,9 @@ ui <- fluidPage(
                     "Climatology: SNODAS Oct 2003\u2013present \u00b7 ",
                     "Ribbons: min/max, 10th\u201390th, 25th\u201375th percentile by day of water year"),
              
-            #DIVIDER LINE BETWEEN TWO PLOTS
+             # DIVIDER LINE BETWEEN TWO PLOTS
              tags$hr(style = "margin: 20px 0; border-top: 2px solid #ddd;"),
-
+             
              plotlyOutput("monthly_profile_plot", height = "400px"),
              
              tags$p(style = "color: #999; font-size: 11px; text-align: center; padding-bottom: 10px;",
@@ -681,6 +778,7 @@ ui <- fluidPage(
                     "Pareto line = cumulative % of total seasonal accumulation \u00b7 ",
                     "Dots = current WY \u00b7 Blue = stronger than median, Red = weaker than median")
     ),  # end TAB 2
+    
     # ==========================================================================
     # TAB 3: Peak SWE & Melt-Out
     # ==========================================================================
@@ -706,7 +804,14 @@ ui <- fluidPage(
                     "Melt-out: last date SWE > 0 in each water year \u00b7 ",
                     "Gaps indicate years with no recorded snow-free date (SWE > 0 all year, or current WY in progress)")
              
-    )  # end TAB 3
+    ),  # end TAB 3
+    
+    # ==========================================================================
+    # TAB 4: Snowpack & Climate Comparison
+    # ==========================================================================
+    tabPanel("\U0001f321\ufe0f Snow Storage Gain/Loss & Climate Comparison",
+             mod_climate_compare_ui("climate_compare")
+    )  # end TAB 4
     
   )  # end tabsetPanel
 )  # end fluidPage
@@ -768,8 +873,8 @@ server <- function(input, output, session) {
              diff_kaf = swe_volume_kaf - cmp_kaf,
              diff_in  = swe_mean_in - cmp_in,
              diff_mm  = swe_mean_mm - cmp_mm,
-             diff_pct = ifelse(!is.na(cmp_af) & cmp_af > 0,        # <-- ADD THIS
-                               (diff_af / cmp_af) * 100, NA_real_)) # <-- AND THIS
+             diff_pct = ifelse(!is.na(cmp_af) & cmp_af > 0,
+                               (diff_af / cmp_af) * 100, NA_real_))
   })
   
   table_data <- reactive({ get_table_data(valid_current(), valid_compare()) })
@@ -781,9 +886,7 @@ server <- function(input, output, session) {
     delta_pct <- if (cmp_total > 0) (delta_af / cmp_total) * 100 else NA
     direction <- if (delta_af >= 0) "greater" else "less"
     color     <- if (delta_af >= 0) "#1a5276" else "#922b21"
-
-
-
+    
     div(class = "summary-bar",
         div(style = "font-size: 15px; color: #333;",
             tagList(
@@ -801,6 +904,7 @@ server <- function(input, output, session) {
                     formatC(cmp_total, format="f", digits=0, big.mark=",")))
     )
   })
+  
   output$map_title <- renderText({
     view <- input$map_view
     if (view == "Current")    return(paste("Current:",    format(valid_current(), "%B %d, %Y")))
@@ -864,7 +968,6 @@ server <- function(input, output, session) {
       diff_mode <- input$diff_display
       
       if (diff_mode == "pct") {
-        # --- Percent difference display ---
         max_abs <- max(abs(d$diff_pct), na.rm = TRUE)
         if (is.infinite(max_abs) || max_abs == 0 || is.na(max_abs)) max_abs <- 10
         pal <- colorNumeric(
@@ -890,7 +993,6 @@ server <- function(input, output, session) {
           addPolylines(data = wa_border, color = "#333333", weight = 1.5, opacity = 0.8)
         
       } else {
-        # --- Acre-feet difference display (original) ---
         max_abs <- max(abs(d$diff_af), na.rm = TRUE)
         if (is.infinite(max_abs) || max_abs == 0) max_abs <- 1
         pal <- colorNumeric(
@@ -1187,6 +1289,7 @@ server <- function(input, output, session) {
       write.csv(out, file, row.names = FALSE)
     }
   )
+  
   output$monthly_profile_plot <- renderPlotly({
     
     prof     <- get_monthly_profile(input$clim_huc)
@@ -1201,7 +1304,6 @@ server <- function(input, output, session) {
       unit_lbl <- "AF"
     }
     
-    # Pre-format hover labels in R for reliable comma display
     fmt_digits <- if (units == "kaf") 2 else 0
     prof <- prof %>%
       mutate(
@@ -1215,7 +1317,6 @@ server <- function(input, output, session) {
     
     month_order <- levels(prof$month_lbl)
     
-    # Bar colors: gaining months steel blue, losing months muted red
     bar_colors <- ifelse(prof$median_delta >= 0,
                          "rgba(70,130,180,0.65)",
                          "rgba(192,57,43,0.55)")
@@ -1225,55 +1326,50 @@ server <- function(input, output, session) {
     
     plot_ly() %>%
       
-      # ---- Median delta bars ----
-    add_bars(
-      data          = prof,
-      x             = ~month_lbl,
-      y             = ~median_delta,
-      customdata    = ~bar_hover_lbl,
-      name          = "Historical Median \u0394SWE",
-      marker        = list(color = bar_colors,
-                           line  = list(color = "rgba(60,60,60,0.3)", width = 0.5)),
-      hovertemplate = paste0("<b>%{x}</b><br>Median \u0394SWE: %{customdata} ",
-                             unit_lbl, "<extra></extra>")
-    ) %>%
+      add_bars(
+        data          = prof,
+        x             = ~month_lbl,
+        y             = ~median_delta,
+        customdata    = ~bar_hover_lbl,
+        name          = "Historical Median \u0394SWE",
+        marker        = list(color = bar_colors,
+                             line  = list(color = "rgba(60,60,60,0.3)", width = 0.5)),
+        hovertemplate = paste0("<b>%{x}</b><br>Median \u0394SWE: %{customdata} ",
+                               unit_lbl, "<extra></extra>")
+      ) %>%
       
+      add_segments(
+        x         = month_order[1],
+        xend      = month_order[length(month_order)],
+        y         = 0,
+        yend      = 0,
+        line      = list(color = "rgba(0,0,0,0.4)", width = 1, dash = "dot"),
+        showlegend = FALSE,
+        hoverinfo  = "none"
+      ) %>%
       
-      # ---- Zero reference line ----
-    add_segments(
-      x         = month_order[1],
-      xend      = month_order[length(month_order)],
-      y         = 0,
-      yend      = 0,
-      line      = list(color = "rgba(0,0,0,0.4)", width = 1, dash = "dot"),
-      showlegend = FALSE,
-      hoverinfo  = "none"
-    ) %>%
+      add_trace(
+        data          = prof,
+        x             = ~month_lbl,
+        y             = ~cum_pct,
+        type          = "scatter",
+        mode          = "lines+markers",
+        name          = "Cumulative % of Accumulation",
+        yaxis         = "y2",
+        line          = list(color = "rgba(60,60,60,0.8)", width = 2, dash = "dot"),
+        marker        = list(color = "rgba(60,60,60,0.8)", size = 5),
+        hovertemplate = "<b>%{x}</b><br>Cumulative: %{y:.1f}%<extra></extra>"
+      ) %>%
       
-      # ---- Pareto cumulative % line (right axis) ----
-    add_trace(
-      data          = prof,
-      x             = ~month_lbl,
-      y             = ~cum_pct,
-      type          = "scatter",
-      mode          = "lines+markers",
-      name          = "Cumulative % of Accumulation",
-      yaxis         = "y2",
-      line          = list(color = "rgba(60,60,60,0.8)", width = 2, dash = "dot"),
-      marker        = list(color = "rgba(60,60,60,0.8)", size = 5),
-      hovertemplate = "<b>%{x}</b><br>Cumulative: %{y:.1f}%<extra></extra>"
-    ) %>%
-      
-      # ---- Lollipop stems: above median (blue) ----
-    add_segments(
-      data       = prof_above,
-      x          = ~month_lbl, xend = ~month_lbl,
-      y          = ~median_delta, yend = ~current_delta,
-      line       = list(color = "rgba(26,82,118,0.85)", width = 2.5),
-      name       = paste0("WY ", current_wy, " \u2014 Stronger than Median"),
-      showlegend = nrow(prof_above) > 0,
-      hoverinfo  = "none"
-    ) %>%
+      add_segments(
+        data       = prof_above,
+        x          = ~month_lbl, xend = ~month_lbl,
+        y          = ~median_delta, yend = ~current_delta,
+        line       = list(color = "rgba(26,82,118,0.85)", width = 2.5),
+        name       = paste0("WY ", current_wy, " \u2014 Stronger than Median"),
+        showlegend = nrow(prof_above) > 0,
+        hoverinfo  = "none"
+      ) %>%
       add_markers(
         data          = prof_above,
         x             = ~month_lbl,
@@ -1285,16 +1381,15 @@ server <- function(input, output, session) {
                                " \u0394SWE: %{customdata} ", unit_lbl, "<extra></extra>")
       ) %>%
       
-      # ---- Lollipop stems: below median (red) ----
-    add_segments(
-      data       = prof_below,
-      x          = ~month_lbl, xend = ~month_lbl,
-      y          = ~median_delta, yend = ~current_delta,
-      line       = list(color = "rgba(192,57,43,0.85)", width = 2.5),
-      name       = paste0("WY ", current_wy, " \u2014 Weaker than Median"),
-      showlegend = nrow(prof_below) > 0,
-      hoverinfo  = "none"
-    ) %>%
+      add_segments(
+        data       = prof_below,
+        x          = ~month_lbl, xend = ~month_lbl,
+        y          = ~median_delta, yend = ~current_delta,
+        line       = list(color = "rgba(192,57,43,0.85)", width = 2.5),
+        name       = paste0("WY ", current_wy, " \u2014 Weaker than Median"),
+        showlegend = nrow(prof_below) > 0,
+        hoverinfo  = "none"
+      ) %>%
       add_markers(
         data          = prof_below,
         x             = ~month_lbl,
@@ -1342,6 +1437,7 @@ server <- function(input, output, session) {
         margin        = list(t = 60, b = 70, r = 70)
       )
   })
+  
   # ============================================================================
   # PEAK & MELT-OUT TAB SERVER
   # ============================================================================
@@ -1357,7 +1453,6 @@ server <- function(input, output, session) {
     units    <- input$metrics_units
     huc_name <- basin_lookup$Name[basin_lookup$HUC8 == input$metrics_huc][1]
     
-    # Unit conversion for peak SWE panel
     if (units == "kaf") {
       md       <- md %>% mutate(peak_af = peak_af / 1000)
       unit_lbl <- "KAF"
@@ -1367,17 +1462,14 @@ server <- function(input, output, session) {
       peak_fmt <- "<b>WY %{x}</b><br>Peak: %{y:,.0f} AF<br>Date: %{customdata}<extra></extra>"
     }
     
-    # Y-axis tick marks for melt-out panel (1st of each month in wy_doy)
     wy_start    <- as.Date("1999-10-01")
     tick_dates  <- seq(as.Date("1999-11-01"), as.Date("2000-09-01"), by = "month")
     tick_doys   <- as.integer(tick_dates - wy_start) + 1
     tick_labels <- format(tick_dates, "%b 1")
     
-    # Extend y-axis range to Sep 30 to accommodate late-melting basins
-    max_doy     <- max(metrics_data()$meltout_wy_doy, na.rm = TRUE)
-    y2_range    <- c(min(tick_doys) - 5, max(max_doy + 5, 366))
+    max_doy  <- max(metrics_data()$meltout_wy_doy, na.rm = TRUE)
+    y2_range <- c(min(tick_doys) - 5, max(max_doy + 5, 366))
     
-    # ---- Panel 1: Peak SWE Volume ----
     p1 <- plot_ly() %>%
       add_trace(
         data          = md,
@@ -1410,7 +1502,6 @@ server <- function(input, output, session) {
         paper_bgcolor = "white"
       )
     
-    # ---- Panel 2: Melt-Out Date ----
     p2 <- plot_ly() %>%
       add_trace(
         data          = md %>% filter(!is.na(meltout_wy_doy)),
@@ -1444,7 +1535,6 @@ server <- function(input, output, session) {
         paper_bgcolor = "white"
       )
     
-    # ---- Assemble 2-panel subplot ----
     subplot(p1, p2,
             nrows   = 2,
             shareX  = FALSE,
@@ -1477,6 +1567,7 @@ server <- function(input, output, session) {
         margin        = list(t = 70, b = 50)
       )
   })
+  
   output$metrics_download_csv <- downloadHandler(
     filename = function() {
       huc_name <- basin_lookup$Name[basin_lookup$HUC8 == input$metrics_huc][1]
@@ -1500,6 +1591,15 @@ server <- function(input, output, session) {
       write.csv(out, file, row.names = FALSE)
     }
   )
+  
+  # ============================================================================
+  # CLIMATE COMPARE TAB SERVER
+  # ============================================================================
+  
+  mod_climate_compare_server("climate_compare",
+                             swe_monthly_statewide,
+                             ncei_temp,
+                             ncei_precip)
   
 }  # end server
 

@@ -87,7 +87,8 @@ jobs:
                 'cache/huc8_centroids.csv',
                 'cache/huc8_base.rds',
                 'cache/wa_border.rds',
-                'data/snodas_huc8_history.csv'
+                'data/snodas_huc8_history.csv',
+                'data/ncei_climate_monthly_wa.csv'
               ),
               account        = 'waterwater',
               forceUpdate    = TRUE,
