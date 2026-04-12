@@ -96,11 +96,12 @@ message(sprintf("Total WA SWE: %.1f KAF",
 message("\nChecking NCEI WA statewide climate update...")
 
 fetch_ncei_statewide_wa <- function(variable, max_retries = 3, timeout_sec = 90) {
+  current_year <- format(Sys.Date(), "%Y")          # <-- dynamic end year
   url <- sprintf(
     paste0("https://www.ncei.noaa.gov/access/monitoring/climate-at-a-glance/",
-           "statewide/time-series/45/%s/1/0/2000-2026/data.csv",
+           "statewide/time-series/45/%s/1/0/2000-%s/data.csv",
            "?base_prd=true&begbaseyear=1991&endbaseyear=2020"),
-    variable
+    variable, current_year                          # <-- two values now fed to sprintf
   )
   
   resp <- NULL
@@ -152,7 +153,6 @@ fetch_ncei_statewide_wa <- function(variable, max_retries = 3, timeout_sec = 90)
 ncei_wa_file         <- file.path(data_dir, "ncei_climate_monthly_wa.csv")
 ncei_wa_needs_update <- FALSE
 today                <- Sys.Date()
-current_month        <- format(today, "%Y-%m")
 day_of_month         <- as.integer(format(today, "%d"))
 
 if (day_of_month >= 10L) {
@@ -168,14 +168,22 @@ if (day_of_month >= 10L) {
       message("  NCEI WA CSV empty or unreadable -- will fetch")
       ncei_wa_needs_update <- TRUE
     } else {
-      last_modified_wa   <- file.info(ncei_wa_file)$mtime
-      updated_this_month <- format(last_modified_wa, "%Y-%m") == current_month
-      if (updated_this_month) {
-        message(sprintf("  NCEI WA already updated this month (%s) -- skipping",
-                        current_month))
+      # Compute the most recent month we expect NCEI to have published.
+      # On/after the 10th, last month's data should be available.
+      # NOTE: do NOT use file.info()$mtime -- git checkout resets all file
+      # timestamps to the current run time, making mtime always look "fresh".
+      expected_month <- as.integer(format(today, "%m")) - 1L
+      expected_year  <- as.integer(format(today, "%Y"))
+      if (expected_month == 0L) { expected_month <- 12L; expected_year <- expected_year - 1L }
+      expected_yyyymm <- sprintf("%d%02d", expected_year, expected_month)
+      
+      max_yyyymm <- max(existing_wa$yyyymm, na.rm = TRUE)
+      
+      if (max_yyyymm >= expected_yyyymm) {
+        message(sprintf("  NCEI WA data already current through %s -- skipping", max_yyyymm))
       } else {
-        message(sprintf("  NCEI WA not yet updated for %s -- will fetch",
-                        current_month))
+        message(sprintf("  NCEI WA data only through %s, expected >= %s -- will fetch",
+                        max_yyyymm, expected_yyyymm))
         ncei_wa_needs_update <- TRUE
       }
     }
