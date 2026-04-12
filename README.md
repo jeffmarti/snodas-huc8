@@ -189,7 +189,30 @@ Canadian border. Known gaps in the Washington dataset:
 | Upper Skagit | ~99% |
 
 SWE volumes for these basins are underestimates relative to their true area.
+---
 
+## Known data limitations
+
+**SNODAS land/water mask error (2014-10-09 through 2019-10-10)**
+
+A known error in the SNODAS masked product affects 126,950 grid cells primarily
+located around water body perimeters and coastlines. During this five-year period,
+these cells erroneously contain SWE values of `0.0` rather than the expected
+no-data value (`-9999`). Prior to 2014-10-09 the same cells carry no-data values;
+after 2019-10-10 they contain valid modeled data. The effect is a slight downward
+bias in mean SWE for affected dates.
+
+This correction mask has not been applied to the data in this repository. For the
+interior mountainous HUC8s that make up the majority of this dataset, the affected
+cells represent a small fraction of total watershed area and the resulting bias on
+mean SWE is expected to be sub-1%. Coastal and water-body-adjacent HUC8s are more
+exposed, though those basins are already subject to the coverage caveats noted above.
+
+A GeoTIFF repair mask (`SNODAS_Zero_Repair_Mask.tif`) is available from NOHRSC at
+[noaadata.apps.nsidc.org/NOAA/G02158/ancillary/](https://noaadata.apps.nsidc.org/NOAA/G02158/ancillary/)
+for users who require corrected data for that period.
+
+*Reference: NSIDC G02158 User Guide v2.1, Table 2 (p. 6)*
 ---
 
 ## License
