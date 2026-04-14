@@ -191,28 +191,30 @@ Canadian border. Known gaps in the Washington dataset:
 SWE volumes for these basins are underestimates relative to their true area.
 ---
 
-## Known data limitations
+## Data History
 
-**SNODAS land/water mask error (2014-10-09 through 2019-10-10)**
+### April 14, 2026: GEE Backfill Upgrade
+The SNODAS HUC8 history file (`data/snodas_huc8_history.csv`) was replaced 
+with a Google Earth Engine (GEE)-derived dataset covering the full period 
+of record (2003-10-01 to present).
 
-A known error in the SNODAS masked product affects 126,950 grid cells primarily
-located around water body perimeters and coastlines. During this five-year period,
-these cells erroneously contain SWE values of `0.0` rather than the expected
-no-data value (`-9999`). Prior to 2014-10-09 the same cells carry no-data values;
-after 2019-10-10 they contain valid modeled data. The effect is a slight downward
-bias in mean SWE for affected dates.
+**Key improvements:**
+- Applied NOHRSC repair mask for 2014-10-09 to 2019-10-10 period, 
+  correcting a known SNODAS land/water mask error
+- Removed San Juan Islands HUC (17110019) which had no valid SNODAS 
+  coverage (previously retained as NA placeholder rows)
+- Identified and corrected a significant data artifact in Upper Skagit 
+  (2019-01-05: 1.99M AF → 417k AF)
 
-This correction mask has not been applied to the data in this repository. For the
-interior mountainous HUC8s that make up the majority of this dataset, the affected
-cells represent a small fraction of total watershed area and the resulting bias on
-mean SWE is expected to be sub-1%. Coastal and water-body-adjacent HUC8s are more
-exposed, though those basins are already subject to the coverage caveats noted above.
+**Validation:**
+- Correlation with original dataset: 1.000
+- Average difference: 117 AF
+- Weighted mean difference: 0.6%
 
-A GeoTIFF repair mask (`SNODAS_Zero_Repair_Mask.tif`) is available from NOHRSC at
-[noaadata.apps.nsidc.org/NOAA/G02158/ancillary/](https://noaadata.apps.nsidc.org/NOAA/G02158/ancillary/)
-for users who require corrected data for that period.
+**Archive files** retained in Google Drive (`snodas_gee_exports` folder).
 
-*Reference: NSIDC G02158 User Guide v2.1, Table 2 (p. 6)*
+Daily updates continue via GitHub Actions pipeline pulling directly 
+from NOHRSC.
 ---
 
 ## License
