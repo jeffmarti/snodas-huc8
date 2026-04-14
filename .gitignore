@@ -10,6 +10,8 @@
 data/old_snodas_huc8_history.csv
 data/snodas_huc8_history_OLD_unclipped.csv
 data/snodas_huc8_history_OLD_wrong_acres.csv
+data/SNODAS_HUC8_Shiny_History_Upgrade.csv
+data/snodas_huc8_history_PRE_GEE.csv
 
 # Temp processing folder
 tmp_snodas/
