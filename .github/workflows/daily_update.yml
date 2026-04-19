@@ -53,6 +53,10 @@ jobs:
           git add data/
           git diff --staged --quiet || git commit -m "daily update: $(date -u +%Y-%m-%d)"
           git push
+          
+       - name: Install rsconnect
+        run: install.packages("rsconnect")
+        shell: Rscript {0}   
 
       - name: Deploy to shinyapps.io
         env:
