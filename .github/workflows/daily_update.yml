@@ -38,24 +38,10 @@ jobs:
           sudo apt-get install -y libgdal-dev libgeos-dev libproj-dev libsqlite3-dev libudunits2-dev
 
       - name: Install R packages
-        uses: r-lib/actions/setup-r-dependencies@v2
-        with:
-          packages: |
-            terra
-            sf
-            exactextractr
-            httr
-            dplyr
-            nhdplusTools
-            tigris
-            rsconnect
-            cpp11
-            progress
-            DT
-            plotly
-            shiny
-            leaflet
-            readr
+        run: |
+          install.packages("renv")
+          renv::restore()
+        shell: Rscript {0}
 
       - name: Run daily update
         run: Rscript scripts/daily_update.R
