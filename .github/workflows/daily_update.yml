@@ -53,6 +53,7 @@ jobs:
             shiny
             leaflet
             readr
+            fs@1.6.5
       - name: Run daily update
         run: Rscript scripts/daily_update.R
       - name: Commit results
