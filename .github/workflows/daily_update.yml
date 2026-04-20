@@ -45,13 +45,14 @@ jobs:
           git add data/
           git diff --staged --quiet || git commit -m "daily update: $(date -u +%Y-%m-%d)"
           git push
-      - name: Deploy to shinyapps.io
+- name: Deploy to shinyapps.io
         env:
           SHINYAPPS_TOKEN:  ${{ secrets.SHINYAPPS_TOKEN }}
           SHINYAPPS_SECRET: ${{ secrets.SHINYAPPS_SECRET }}
         run: |
           Rscript -e "
             renv::restore(prompt = FALSE)
+            renv::snapshot(prompt = FALSE, type = 'all')
             rsconnect::setAccountInfo(
               name   = 'waterwater',
               token  = Sys.getenv('SHINYAPPS_TOKEN'),
