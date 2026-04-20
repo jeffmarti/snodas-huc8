@@ -14,8 +14,8 @@
 name: SNODAS Daily Update
 on:
   schedule:
-    - cron: '30 10 * * *'   # 10:30 UTC daily
-  workflow_dispatch:          # allow manual trigger
+    - cron: '30 10 * * *'
+  workflow_dispatch:
 jobs:
   update:
     runs-on: ubuntu-latest
@@ -36,9 +36,6 @@ jobs:
           sudo apt-get install -y libgdal-dev libgeos-dev libproj-dev libsqlite3-dev libudunits2-dev
       - name: Install R packages
         uses: r-lib/actions/setup-renv@v2
-      - name: Install rsconnect
-        run: renv::install("rsconnect")
-        shell: Rscript {0}
       - name: Run daily update
         run: Rscript scripts/daily_update.R
       - name: Commit results
