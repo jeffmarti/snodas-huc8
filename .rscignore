@@ -6,3 +6,4 @@ scripts/snodas_functions.R
 /data/.gitkeep
 /cache/.gitkeep
 README.md
+renv.lock
