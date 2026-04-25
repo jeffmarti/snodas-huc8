@@ -846,7 +846,7 @@ server <- function(input, output, session) {
   })
   
   observeEvent(input$clear_popup, {
-    leafletProxy("main_map") %>% clearPopups()
+    leafletProxy("main_map") %>% clearPopups()  
   })
   # Preset: One Year Ago
   observeEvent(input$preset_1yr, {
