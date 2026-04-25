@@ -581,8 +581,9 @@ ui <- fluidPage(
            tags$ul(
              tags$li(tags$b("Current / Primary Date:"), " The main date displayed on the map and table."),
              tags$li(tags$b("Comparison Date:"), " A second date for side-by-side or difference analysis.
-                     Use the ", tags$b("Jump to Peak Season"), " dropdown to quickly navigate
-                     to April 1st of any year."),
+            Use the ", tags$b("Quick Comparison"), " buttons to instantly snap the comparison
+            date to one day prior, the start of the current month, or the start of the
+            current water year (October 1)."),
              tags$li(tags$b("Map View:"), " Toggle between Current, Comparison, or Difference
                      (Current minus Comparison) choropleth views."),
              tags$li(tags$b("Swap Dates:"), " Reverses the current and comparison dates instantly."),
@@ -689,11 +690,23 @@ ui <- fluidPage(
                                      available_dates <= max(available_dates) - 365), 1)],
                                    min = min(available_dates), max = max(available_dates),
                                    datesdisabled = missing_dates, format = "MM d, yyyy")),
-               column(3, selectInput("season_jump", label = "Jump to Peak Season Date",
-                                     choices = c("-- select --", setNames(
-                                       paste0(2004:as.integer(format(max(available_dates), "%Y")), "-04-01"),
-                                       paste0("April 1, ", 2004:as.integer(format(max(available_dates), "%Y")))
-                                     )), selected = "-- select --")),
+               column(3,
+                      tags$label("Quick Comparison", class = "control-label"),
+                      tags$div(style = "margin-top: 4px;",
+                               actionButton("preset_1yr", "📅 One Year Ago",
+                                            class = "btn btn-default btn-sm",
+                                            style = "display:block; width:100%; margin-bottom:5px; text-align:left;"),
+                               actionButton("preset_1day", "📅 1-Day Change",
+                                            class = "btn btn-default btn-sm",
+                                            style = "display:block; width:100%; margin-bottom:5px; text-align:left;"),
+                               actionButton("preset_som", "📅 Start of Month",
+                                            class = "btn btn-default btn-sm",
+                                            style = "display:block; width:100%; margin-bottom:5px; text-align:left;"),
+                               actionButton("preset_sowy", "📅 Start of Water Year",
+                                            class = "btn btn-default btn-sm",
+                                            style = "display:block; width:100%; text-align:left;")
+                      )
+               ),
                column(3, selectInput("map_view", label = "Map View",
                                      choices = c("Current", "Comparison", "Difference"),
                                      selected = "Current"))
@@ -835,13 +848,36 @@ server <- function(input, output, session) {
   observeEvent(input$clear_popup, {
     leafletProxy("main_map") %>% clearPopups()
   })
-  
-  observeEvent(input$season_jump, {
-    req(input$season_jump != "-- select --")
-    d <- as.Date(input$season_jump)
-    nearest <- available_dates[which.min(abs(available_dates - d))]
+  # Preset: One Year Ago
+  observeEvent(input$preset_1yr, {
+    target  <- valid_current() - 365
+    nearest <- available_dates[which.min(abs(available_dates - target))]
     updateDateInput(session, "compare_date", value = nearest)
-    updateSelectInput(session, "season_jump", selected = "-- select --")
+  })
+  # Preset: 1-Day Change (compare_date = day before current_date)
+  observeEvent(input$preset_1day, {
+    target  <- valid_current() - 1
+    nearest <- available_dates[which.min(abs(available_dates - target))]
+    updateDateInput(session, "compare_date", value = nearest)
+  })
+  
+  # Preset: Start of Month (compare_date = 1st of current_date's month)
+  observeEvent(input$preset_som, {
+    cur     <- valid_current()
+    target  <- as.Date(format(cur, "%Y-%m-01"))
+    nearest <- available_dates[which.min(abs(available_dates - target))]
+    updateDateInput(session, "compare_date", value = nearest)
+  })
+  
+  # Preset: Start of Water Year (compare_date = Oct 1 of current water year)
+  observeEvent(input$preset_sowy, {
+    cur    <- valid_current()
+    m      <- as.integer(format(cur, "%m"))
+    y      <- as.integer(format(cur, "%Y"))
+    target <- if (m >= 10) as.Date(paste0(y,     "-10-01")) else
+      as.Date(paste0(y - 1, "-10-01"))
+    nearest <- available_dates[which.min(abs(available_dates - target))]
+    updateDateInput(session, "compare_date", value = nearest)
   })
   
   valid_current <- reactive({
