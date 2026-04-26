@@ -35,7 +35,7 @@ date in the record. Key features:
 - Select any two dates and toggle between Current, Comparison, and Difference map views
 - Summary bar showing total SWE change across all 71 watersheds between the two dates
 - Clickable watershed popups with SWE depth, volume, and area
-- Jump-to-April-1 shortcut for rapid peak-season comparisons
+- Buttons to allow quick comparison dates
 - Sortable data table with CSV download
 
 ### 📈 Climatology
