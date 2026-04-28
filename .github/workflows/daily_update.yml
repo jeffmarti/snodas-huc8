@@ -37,7 +37,8 @@ jobs:
       - name: Install R packages
         uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          packages: |
+          install-system-dependencies: false
+          packages:
             terra
             sf
             exactextractr
