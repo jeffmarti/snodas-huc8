@@ -851,13 +851,13 @@ server <- function(input, output, session) {
   # Preset: One Year Ago
   observeEvent(input$preset_1yr, {
     target  <- valid_current() - 365
-    nearest <- available_dates[which.min(abs(available_dates - target))]
+    nearest <- available_dates[which.min(abs(as.numeric(available_dates - target)))]
     updateDateInput(session, "compare_date", value = nearest)
   })
   # Preset: 1-Day Change (compare_date = day before current_date)
   observeEvent(input$preset_1day, {
     target  <- valid_current() - 1
-    nearest <- available_dates[which.min(abs(available_dates - target))]
+    nearest <- available_dates[which.min(abs(as.numeric(available_dates - target)))]
     updateDateInput(session, "compare_date", value = nearest)
   })
   
@@ -865,7 +865,7 @@ server <- function(input, output, session) {
   observeEvent(input$preset_som, {
     cur     <- valid_current()
     target  <- as.Date(format(cur, "%Y-%m-01"))
-    nearest <- available_dates[which.min(abs(available_dates - target))]
+    nearest <- available_dates[which.min(abs(as.numeric(available_dates - target)))]
     updateDateInput(session, "compare_date", value = nearest)
   })
   
@@ -876,7 +876,7 @@ server <- function(input, output, session) {
     y      <- as.integer(format(cur, "%Y"))
     target <- if (m >= 10) as.Date(paste0(y,     "-10-01")) else
       as.Date(paste0(y - 1, "-10-01"))
-    nearest <- available_dates[which.min(abs(available_dates - target))]
+    nearest <- available_dates[which.min(abs(as.numeric(available_dates - target)))]
     updateDateInput(session, "compare_date", value = nearest)
   })
   
