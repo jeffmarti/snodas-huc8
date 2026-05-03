@@ -75,7 +75,8 @@ jobs:
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name  "github-actions[bot]"
-          git pull --rebase origin main
           git add data/snodas_huc8_history.csv data/backfill_progress.txt
+          git clean -fd
+          git pull --rebase origin main
           git diff --staged --quiet || git commit -m "backfill: $(cat data/backfill_progress.txt)"
           git push --force-with-lease
