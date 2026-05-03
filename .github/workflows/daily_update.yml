@@ -36,6 +36,8 @@ jobs:
           sudo apt-get install -y libgdal-dev libgeos-dev libproj-dev libsqlite3-dev libudunits2-dev
       - name: Install R packages
         uses: r-lib/actions/setup-r-dependencies@v2
+        env:
+          PKG_SYSREQS: "false"  
         with:
           install-system-dependencies: false
           packages:
