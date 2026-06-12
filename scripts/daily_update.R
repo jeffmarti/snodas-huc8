@@ -1,5 +1,5 @@
 # ==============================================================================
-# daily_update.R
+# daily_update.R   
 #
 # Finds the latest available SNODAS file, computes HUC8 zonal statistics,
 # and appends the result to data/snodas_huc8_history.csv.
