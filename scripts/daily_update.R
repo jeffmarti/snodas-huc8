@@ -96,12 +96,15 @@ message(sprintf("Total WA SWE: %.1f KAF",
 message("\nChecking NCEI WA statewide climate update...")
 
 fetch_ncei_statewide_wa <- function(variable, max_retries = 3, timeout_sec = 90) {
+  # NOTE (2026-06): NCEI dropped the Anomaly column from data.csv and no
+  # longer honors base-period params; anomaly is computed locally below.
+  # Fetch from 1991 (not 2000) so local normals are true 1991-2020 means;
+  # output is trimmed back to 2000+ before returning.
   current_year <- format(Sys.Date(), "%Y")          # <-- dynamic end year
   url <- sprintf(
     paste0("https://www.ncei.noaa.gov/access/monitoring/climate-at-a-glance/",
-           "statewide/time-series/45/%s/1/0/2000-%s/data.csv",
-           "?base_prd=true&begbaseyear=1991&endbaseyear=2020"),
-    variable, current_year                          # <-- two values now fed to sprintf
+           "statewide/time-series/45/%s/1/0/1991-%s/data.csv"),
+    variable, current_year
   )
   
   resp <- NULL
@@ -139,8 +142,15 @@ fetch_ncei_statewide_wa <- function(variable, max_retries = 3, timeout_sec = 90)
   )
   if (is.null(df) || nrow(df) == 0L) return(NULL)
   
-  df %>%
-    dplyr::rename(yyyymm = Date, value = Value, anomaly = Anomaly) %>%
+  if (!all(c("Date", "Value") %in% names(df))) {
+    warning("NCEI CSV missing Date/Value columns -- format changed? Cols: ",
+            paste(names(df), collapse = ", "))
+    return(NULL)
+  }
+  
+  df <- df %>%
+    dplyr::rename(yyyymm = Date, value = Value) %>%
+    dplyr::rename(dplyr::any_of(c(anomaly = "Anomaly"))) %>%  # optional; absent since 2026
     dplyr::mutate(
       yyyymm   = sprintf("%06d", as.integer(yyyymm)),
       variable = variable,
@@ -148,6 +158,22 @@ fetch_ncei_statewide_wa <- function(variable, max_retries = 3, timeout_sec = 90)
       month    = as.integer(substr(yyyymm, 5L, 6L))
     ) %>%
     dplyr::filter(!is.na(value), value > -99)
+  
+  # NCEI no longer supplies an Anomaly column; compute it from 1991-2020
+  # monthly normals (matches the "vs 1991-2020 normal" chart labels).
+  if (!"anomaly" %in% names(df)) {
+    normals <- df %>%
+      dplyr::filter(year >= 1991L, year <= 2020L) %>%
+      dplyr::group_by(month) %>%
+      dplyr::summarise(normal = mean(value, na.rm = TRUE), .groups = "drop")
+    df <- df %>%
+      dplyr::left_join(normals, by = "month") %>%
+      dplyr::mutate(anomaly = round(value - normal, 2)) %>%
+      dplyr::select(-normal)
+  }
+  
+  # Trim back to 2000+ so the output CSV covers the same period as before
+  dplyr::filter(df, year >= 2000L)
 }
 
 ncei_wa_file         <- file.path(data_dir, "ncei_climate_monthly_wa.csv")
