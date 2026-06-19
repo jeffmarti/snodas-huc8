@@ -10,6 +10,8 @@
 #   - Added plotly, shiny, leaflet, readr to R packages
 #   - appFiles updated to include huc8_base.rds and wa_border.rds
 #     and exclude pipeline scripts and archived CSVs
+#   - Pinned terra to 1.8-54 to avoid GDAL AsClassicDataset build
+#     failure in terra 1.9.x on shinyapps.io build image
 # ==============================================================================
 name: SNODAS Daily Update
 on:
@@ -34,6 +36,9 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y libgdal-dev libgeos-dev libproj-dev libsqlite3-dev libudunits2-dev
+      - name: Pin terra to a working version
+        run: |
+          Rscript -e 'install.packages("remotes"); remotes::install_version("terra", version = "1.8-54", repos = "https://cloud.r-project.org")'
       - name: Install R packages
         uses: r-lib/actions/setup-r-dependencies@v2
         env:
@@ -41,7 +46,6 @@ jobs:
           RSPM: "https://packagemanager.posit.co/cran/__linux__/noble/latest"
         with:
           packages: |
-            terra
             sf
             exactextractr
             httr
@@ -57,8 +61,6 @@ jobs:
             leaflet
             readr
             fs
-          extra-packages: |
-            any::terra
       - name: Run daily update
         run: Rscript scripts/daily_update.R
       - name: Commit results
