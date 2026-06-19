@@ -41,7 +41,7 @@ jobs:
           RSPM: "https://packagemanager.posit.co/cran/__linux__/noble/latest"
         with:
           packages: |
-            terra@1.8-5
+            terra@latest
             sf
             exactextractr
             httr
