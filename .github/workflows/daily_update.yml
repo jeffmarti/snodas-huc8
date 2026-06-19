@@ -41,7 +41,7 @@ jobs:
           RSPM: "https://packagemanager.posit.co/cran/__linux__/noble/latest"
         with:
           packages: |
-            terra
+            terra@1.8-5
             sf
             exactextractr
             httr
@@ -58,7 +58,7 @@ jobs:
             readr
             fs
           extra-packages: |
-            any::terra
+            any::terra@1.8-5
       - name: Run daily update
         run: Rscript scripts/daily_update.R
       - name: Commit results
