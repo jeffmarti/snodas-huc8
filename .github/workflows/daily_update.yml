@@ -19,7 +19,7 @@ on:
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -37,7 +37,8 @@ jobs:
       - name: Install R packages
         uses: r-lib/actions/setup-r-dependencies@v2
         env:
-          PKG_SYSREQS: "false"  
+          PKG_SYSREQS: "false"
+          RSPM: "https://packagemanager.posit.co/cran/__linux__/noble/latest"
         with:
           packages: |
             terra
