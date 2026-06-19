@@ -39,8 +39,7 @@ jobs:
         env:
           PKG_SYSREQS: "false"  
         with:
-          install-system-dependencies: false
-          packages:
+           packages:
             terra@1.8-5
             sf
             exactextractr
