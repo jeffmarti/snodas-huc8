@@ -41,7 +41,7 @@ jobs:
         with:
           install-system-dependencies: false
           packages:
-            terra
+            terra@1.8-5
             sf
             exactextractr
             httr
