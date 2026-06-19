@@ -39,7 +39,7 @@ jobs:
         env:
           PKG_SYSREQS: "false"  
         with:
-           packages:
+          packages: |
             terra
             sf
             exactextractr
@@ -56,6 +56,8 @@ jobs:
             leaflet
             readr
             fs
+          extra-packages: |
+            any::terra
       - name: Run daily update
         run: Rscript scripts/daily_update.R
       - name: Commit results
