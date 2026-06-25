@@ -547,8 +547,12 @@ ui <- fluidPage(
              tags$li("Temporal coverage: October 2003 \u2013 present"),
              tags$li("Updated daily, typically by mid-morning Pacific Time"),
              tags$li(tags$a(href="https://nsidc.org/data/g02158", target="_blank",
-                            "NSIDC SNODAS product page (G02158)"))
+                            "NSIDC SNODAS product page (G02158)")),
+             tags$li(tags$a(href="https://www.nohrsc.noaa.gov/interactive/html/map.html?var=ssm_swe&min_x=-125.41666666667&min_y=44.758333333329&max_x=-115.99166666667&max_y=50.058333333329&bgvar=dem&shdvar=shading&title=0&width=800&height=450&font=0&lbl=m&palette=0&h_o=0&metric=0&lp=0&no_header=0&snap=1&extents=us&o9=1&o12=1&o13=1", target="_blank",
+                            "Latest SNODAS map viewer (NOHRSC)"))
            ),
+           
+           
            tags$h4("\U0001f4cf Understanding Acre-Feet"),
            tags$p("All snow water volumes in this app are expressed in ",
                   tags$b("acre-feet (AF)."), " One acre-foot is the volume of water
