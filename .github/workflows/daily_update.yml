@@ -69,7 +69,9 @@ jobs:
           git config --local user.name  "github-actions[bot]"
           git add data/
           git diff --staged --quiet || git commit -m "daily update: $(date -u +%Y-%m-%d)"
+          git stash --include-untracked
           git pull --rebase origin main
+          git stash pop || true
           git push
       - name: Deploy to shinyapps.io
         env:
