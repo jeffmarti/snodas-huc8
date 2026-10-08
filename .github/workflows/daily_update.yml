@@ -1,16 +1,22 @@
 # ==============================================================================
 # .github/workflows/daily_update.yml
 #
-# Nightly job to append the latest SNODAS date to the history CSV.
+# Nightly job to append the latest SNODAS date to the history CSV,
+# then redeploy the app to Posit Connect Cloud.
 #
-# Runs at 10:30 UTC (2:30am/3:30am PST/PDT) -- SNODAS is typically
-# published by 10:00 UTC for the previous day.
+# Runs at 14:00 UTC (6am/7am PST/PDT).
 #
 # CHANGES:
-#   - Added plotly, shiny, leaflet, readr to R packages
-#   - appFiles updated to include huc8_base.rds and wa_border.rds
-#     and exclude pipeline scripts and archived CSVs
-#   - Pinned terra to 1.8-54 to avoid GDAL AsClassicDataset build
+#   - Deploy target moved from shinyapps.io to Posit Connect Cloud
+#   - Removed envManagement = FALSE from deployApp(): on Connect Cloud that
+#     setting would stop the server from installing the app's R packages
+#   - Added cache-version: 2 so the package cache is rebuilt with a
+#     Connect Cloud-capable rsconnect
+#   - Deploy now checks deployApp()'s return value and retries up to 3 times
+#   - (earlier) Added plotly, shiny, leaflet, readr to R packages
+#   - (earlier) appFiles include huc8_base.rds and wa_border.rds and
+#     exclude pipeline scripts and archived CSVs
+#   - (earlier) Pinned terra to 1.8-54 to avoid GDAL AsClassicDataset build
 #     failure in terra 1.9.x on shinyapps.io build image
 # ==============================================================================
 name: SNODAS Daily Update
@@ -45,6 +51,7 @@ jobs:
           PKG_SYSREQS: "false"
           RSPM: "https://packagemanager.posit.co/cran/__linux__/noble/latest"
         with:
+          cache-version: 2
           packages: |
             sf
             exactextractr
@@ -74,32 +81,100 @@ jobs:
           git pull --rebase origin main
           git stash pop || true
           git push
-      - name: Deploy to shinyapps.io
+
+      # -- Deploy to Posit Connect Cloud ----------------------------------------
+      # Secrets (Settings > Secrets and variables > Actions > Secrets tab):
+      #   CONNECT_CLOUD_CLIENT_ID, CONNECT_CLOUD_CLIENT_SECRET
+      # CONNECT_CONTENT_ID is the long ID at the end of the app's URL:
+      #   https://connect.posit.cloud/waterwater/content/<content-id>
+      - name: Deploy to Posit Connect Cloud
         env:
-          SHINYAPPS_TOKEN:  ${{ secrets.SHINYAPPS_TOKEN }}
-          SHINYAPPS_SECRET: ${{ secrets.SHINYAPPS_SECRET }}
+          CONNECT_CLIENT_ID:     ${{ secrets.CONNECT_CLOUD_CLIENT_ID }}
+          CONNECT_CLIENT_SECRET: ${{ secrets.CONNECT_CLOUD_CLIENT_SECRET }}
+          CONNECT_ACCOUNT:       'waterwater'
+          CONNECT_CONTENT_ID:    '01a11da9-a7bc-9e72-27d3-fb3cb01557b3'
+          APP_NAME:              'snodas-huc8'
         run: |
           Rscript -e "
-            rsconnect::setAccountInfo(
-              name   = 'waterwater',
-              token  = Sys.getenv('SHINYAPPS_TOKEN'),
-              secret = Sys.getenv('SHINYAPPS_SECRET')
+            # Verify credentials are present
+            if (Sys.getenv('CONNECT_CLIENT_ID') == '' || Sys.getenv('CONNECT_CLIENT_SECRET') == '') {
+              stop('ERROR: CONNECT_CLOUD_CLIENT_ID or CONNECT_CLOUD_CLIENT_SECRET not configured')
+            }
+
+            # Connect Cloud needs a recent rsconnect - upgrade if needed
+            if (packageVersion('rsconnect') < '1.6.0') {
+              install.packages('rsconnect')
+            }
+            cat('rsconnect version:', as.character(packageVersion('rsconnect')), '\n')
+
+            account    <- Sys.getenv('CONNECT_ACCOUNT')
+            content_id <- Sys.getenv('CONNECT_CONTENT_ID')
+            app_name   <- Sys.getenv('APP_NAME')
+            server     <- 'connect.posit.cloud'
+
+            # Register Connect Cloud credentials on this (temporary) runner
+            rsconnect::connectCloudClientCredentials(
+              clientId     = Sys.getenv('CONNECT_CLIENT_ID'),
+              clientSecret = Sys.getenv('CONNECT_CLIENT_SECRET'),
+              accountName  = account,
+              name         = NULL
             )
-            rsconnect::deployApp(
-              appDir         = '.',
-              appName        = 'snodas-huc8',
-              appFiles       = c(
-                'app.r',
-                'cache/huc8_centroids.csv',
-                'cache/huc8_base.rds',
-                'cache/wa_border.rds',
-                'data/snodas_huc8_history.csv',
-                'R/mod_climate_compare.R',
-                'data/ncei_climate_monthly_wa.csv'
-              ),
-              account        = 'waterwater',
-              forceUpdate    = TRUE,
-              launch.browser = FALSE,
-              envManagement  = FALSE
-            )
+
+            # Build a deployment record so deployApp() updates the EXISTING
+            # migrated app instead of creating a new one. This file lives only
+            # on the runner - it is never committed (the commit step runs
+            # earlier and only adds data/).
+            rec_dir <- file.path('rsconnect', server, account)
+            dir.create(rec_dir, recursive = TRUE, showWarnings = FALSE)
+            writeLines(c(
+              paste0('name: ',     app_name),
+              paste0('title: ',    app_name),
+              paste0('username: ', account),
+              paste0('account: ',  account),
+              paste0('server: ',   server),
+              paste0('hostUrl: https://api.', server, '/v1'),
+              paste0('appId: ',    content_id)
+            ), file.path(rec_dir, paste0(app_name, '.dcf')))
+
+            # Retry logic for deployment.
+            # deployApp() returns TRUE/FALSE instead of throwing an error when
+            # the app fails to START on the server, so check its return value.
+            max_attempts <- 3
+            attempt <- 1
+
+            while (attempt <= max_attempts) {
+              ok <- tryCatch({
+                result <- rsconnect::deployApp(
+                  appDir         = '.',
+                  appId          = content_id,
+                  account        = account,
+                  server         = server,
+                  appFiles       = c(
+                    'app.r',
+                    'cache/huc8_centroids.csv',
+                    'cache/huc8_base.rds',
+                    'cache/wa_border.rds',
+                    'data/snodas_huc8_history.csv',
+                    'R/mod_climate_compare.R',
+                    'data/ncei_climate_monthly_wa.csv'
+                  ),
+                  forceUpdate    = TRUE,
+                  lint           = FALSE,
+                  launch.browser = FALSE
+                )
+                isTRUE(result)
+              }, error = function(e) {
+                cat('Deployment attempt', attempt, 'failed:', conditionMessage(e), '\n')
+                FALSE
+              })
+              if (ok) {
+                cat('Deployment succeeded on attempt', attempt, '\n')
+                break
+              }
+              if (attempt == max_attempts) {
+                stop('Deployment failed after ', max_attempts, ' attempts')
+              }
+              Sys.sleep(30)
+              attempt <- attempt + 1
+            }
           "
